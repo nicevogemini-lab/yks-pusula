@@ -1,0 +1,13 @@
+# YKS Pusula - surum kontrolu disinda tutulanlar
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Veritabani ve yerel ayarlar (kisisel veri)
+veri/
+.env
+.env.bulut
+
+# Gecici test veritabanlari
+veri/_*.db
