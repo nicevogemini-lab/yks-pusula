@@ -1,0 +1,13 @@
+name: Uyanik tut
+
+on:
+  schedule:
+    - cron: "*/5 2-22 * * *"   # 05:00-01:55 (Istanbul) arasi 5 dakikada bir
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Saglik kontrolu
+        run: curl -fsS --max-time 90 https://yks-pusula.onrender.com/api/saglik
