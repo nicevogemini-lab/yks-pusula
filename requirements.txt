@@ -1,10 +1,11 @@
-fastapi>=0.115
-uvicorn[standard]>=0.30
-sqlalchemy>=2.0
-python-dotenv>=1.0
-httpx>=0.27
+# Calisan surumler sabit: her derlemede ayni paketler kurulsun
+fastapi==0.163.1
+uvicorn[standard]==0.54.0
+sqlalchemy==2.1.9
+python-dotenv==1.2.4
+httpx==0.28.1
 # bulut veritabani (Neon PostgreSQL)
-psycopg[binary]>=3.2
+psycopg[binary]==3.3.9
 
 # gelistirme
-pytest>=8.0
+pytest==9.2.0

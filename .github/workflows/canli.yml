@@ -1,0 +1,28 @@
+name: Depo canli
+
+# GitHub, 60 gun depo hareketi olmazsa zamanlanmis is akislarini kendisi
+# kapatir; kapaninca uyanik tutma pingi de durur. Ayda bir ayri bir dala
+# zaman damgasi commit'i atarak bu kurali devre disi birakiyoruz. Bu dal
+# Render tarafindan izlenmedigi icin gereksiz yeniden derleme olmaz.
+on:
+  schedule:
+    - cron: "0 3 1 * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  kayit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Kayit dalina zaman damgasi
+        run: |
+          git config user.name "pusula-bot"
+          git config user.email "pusula-bot@users.noreply.github.com"
+          git checkout -B bot-canli
+          date -u +"%Y-%m-%dT%H:%M:%SZ" > canli.txt
+          git add canli.txt
+          git commit -m "Canli kaydi $(date -u +%Y-%m)"
+          git push -f origin bot-canli
