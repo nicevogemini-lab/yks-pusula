@@ -21,7 +21,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from fastapi.staticfiles import StaticFiles
 from starlette.requests import Request
 
-from . import auth
+from . import auth, bekci
 from .api import api
 from .database import BASE_DIR, Base, SessionLocal, engine
 from .seed import mufredati_yukle, sema_guncelle
@@ -70,7 +70,10 @@ async def yasam_dongusu(_app: FastAPI):
     with SessionLocal() as db:
         sema_guncelle(db)
         mufredati_yukle(db)
+    uyanik_tut = bekci.basla()  # bulutta: kendini uyanık tutan arka plan döngüsü
     yield
+    if uyanik_tut is not None:
+        uyanik_tut.cancel()
 
 
 # Arayüz sürümü: web/ altındaki en yeni dosyanın zaman damgası.
