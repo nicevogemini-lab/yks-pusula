@@ -2,6 +2,7 @@
 """YKS Pusula HTTP API'si."""
 from __future__ import annotations
 
+import os
 from datetime import date, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -1112,6 +1113,9 @@ def yedek_indir():
 def saglik(db: Session = Depends(get_db)):
     return {
         "durum": "calisiyor",
+        # Render her yayina commit kimligini verir: hangi surumun ayakta
+        # oldugu tek bakista gorunur, diske yazmadan
+        "derleme": os.getenv("RENDER_GIT_COMMIT", "")[:7] or "yerel",
         "ders": db.query(Ders).count(),
         "konu": db.query(Konu).count(),
         "profil": db.query(Profil).count(),
