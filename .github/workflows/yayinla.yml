@@ -1,0 +1,25 @@
+name: Yayinla
+
+# Render servisi bu depoya GitHub uygulamasiyla bagli olmadigi icin push
+# kendiliginden derleme baslatmiyor. Bu is akisi main dalina gelen her
+# commit'te Render API'sini cagirip yeni surumu yayina aldirir.
+# Anahtar depo sirri olarak durur: RENDER_API_KEY
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  yayinla:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Render'da derlemeyi baslat
+        run: |
+          kod=$(curl -s -o /tmp/yanit -w "%{http_code}" -X POST \
+            https://api.render.com/v1/services/srv-dbvbdldg1s2s73ep4bp0/deploys \
+            -H "Authorization: Bearer ${{ secrets.RENDER_API_KEY }}" \
+            -H "Content-Type: application/json" -d '{}')
+          echo "HTTP $kod"
+          cat /tmp/yanit
+          test "$kod" = "201" || test "$kod" = "200"
