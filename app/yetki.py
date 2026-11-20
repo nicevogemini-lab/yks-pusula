@@ -83,9 +83,14 @@ def yazma_kontrol(islem: str) -> None:
         raise HTTPException(403, "Bu işlem için yetkin yok.")
 
 
+def yonetici_mi(kullanici: Kullanici | None = None) -> bool:
+    """Yönetici mi? Kapısız (yerel) modda tam yetki sayılır."""
+    kullanici = kullanici if kullanici is not None else mevcut_kullanici()
+    return kullanici is None or kullanici.rol == "yonetici"
+
+
 def yonetici_kontrol() -> None:
-    kullanici = mevcut_kullanici()
-    if kullanici is not None and kullanici.rol != "yonetici":
+    if not yonetici_mi():
         raise HTTPException(403, "Bu işlemi yalnız yönetici yapabilir.")
 
 

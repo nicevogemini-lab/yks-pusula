@@ -103,6 +103,8 @@ class Ders(Base):
     soru_sayisi: Mapped[int] = mapped_column(Integer, default=0)
     renk: Mapped[str] = mapped_column(String(16), default="#ea580c")
     sira: Mapped[int] = mapped_column(Integer, default=0)
+    # Yöneticinin eklediği ders: açılıştaki müfredat eşitlemesi dokunmaz
+    ozel: Mapped[bool] = mapped_column(Boolean, default=False)
 
     def to_dict(self) -> dict:
         return {
@@ -113,6 +115,7 @@ class Ders(Base):
             "soru_sayisi": self.soru_sayisi,
             "renk": self.renk,
             "sira": self.sira,
+            "ozel": bool(self.ozel),
         }
 
 
@@ -131,6 +134,8 @@ class Konu(Base):
     beceri: Mapped[str] = mapped_column(String(64), default="")  # KB, AB, SD, OK
     onkosul: Mapped[str] = mapped_column(String(64), default="")  # virgüllü konu kodları
     sira: Mapped[int] = mapped_column(Integer, default=0)
+    # Yöneticinin eklediği/düzenlediği konu: gömülü veri güncellemesi ezmez
+    ozel: Mapped[bool] = mapped_column(Boolean, default=False)
 
     def to_dict(self) -> dict:
         return {
@@ -143,6 +148,7 @@ class Konu(Base):
             "sure_dk": self.sure_dk,
             "beceri": [b for b in self.beceri.split(",") if b],
             "onkosul": [o for o in self.onkosul.split(",") if o],
+            "ozel": bool(self.ozel),
         }
 
 

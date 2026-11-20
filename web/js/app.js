@@ -1,7 +1,6 @@
 // app.js — kabuk, yönlendirme ve açılış
 import { api } from "./api.js";
 import { h, ikon, hataKarti, yukleniyorKarti } from "./ui.js";
-import { kurulumGoster } from "./pages/kurulum.js";
 import * as panel from "./pages/panel.js";
 import * as mufredat from "./pages/mufredat.js";
 import * as plan from "./pages/plan.js";
@@ -27,7 +26,7 @@ const kok = document.getElementById("kok");
 const durum = { meta: null, kullanici: null, profiller: [], profil: null, sayfa: "panel", icerik: null };
 
 // Arayüz sürümü: kullanıcı yeni sürümün yüklendiğini menünün altından görür
-const SURUM = "v2.7";
+const SURUM = "v3.0";
 
 // ---------------------------------------------------------------- yardımcı
 function kalanGun(isoTarih) {
@@ -79,7 +78,9 @@ function kabukCiz() {
     );
   });
 
-  const yuzdeMetni = `${durum.profil.alan_etiketi} · ${durum.profil.sinif_etiketi}`;
+  const yuzdeMetni = durum.profil
+    ? `${durum.profil.alan_etiketi} · ${durum.profil.sinif_etiketi}`
+    : "Öğrenci seçilmedi";
   menu.append(
     h(
       "div",
@@ -108,17 +109,28 @@ function kabukCiz() {
         ? h("a", { class: "cikis-link", href: "/cikis", title: "Oturumu kapat", text: "Çıkış" })
         : null,
       geriSayim,
-      h(
-        "a",
-        { class: "profil-cip", href: "#/ayarlar", title: durum.kullanici?.rol_etiketi || "" },
-        h("span", { class: "avatar", text: (durum.profil.ad || "Ö").trim().charAt(0).toUpperCase() }),
-        h(
-          "div",
-          {},
-          h("b", { text: durum.profil.ad }),
-          h("small", { text: yuzdeMetni })
-        )
-      ),
+      // Yönetici öğrenci seçmeden de kabuğu kullanır; çip o durumda bilgi verir
+      durum.profil
+        ? h(
+            "a",
+            { class: "profil-cip", href: "#/ayarlar", title: durum.kullanici?.rol_etiketi || "" },
+            h("span", {
+              class: "avatar",
+              text: (durum.profil.ad || "Ö").trim().charAt(0).toUpperCase(),
+            }),
+            h("div", {}, h("b", { text: durum.profil.ad }), h("small", { text: yuzdeMetni }))
+          )
+        : h(
+            "span",
+            { class: "profil-cip", title: "Tanımlı öğrenci yok" },
+            h("span", { class: "avatar", text: "—" }),
+            h(
+              "div",
+              {},
+              h("b", { text: "Öğrenci yok" }),
+              h("small", { text: "Kullanıcılar sayfasından ekle" })
+            )
+          ),
       oturumCipi()
     )
   );
@@ -168,11 +180,16 @@ function profilSecici() {
 function ustBarGuncelle(sayfa) {
   durum.baslik.textContent = sayfa.modul.baslik || sayfa.ad;
   durum.alt.textContent = sayfa.modul.alt || "";
-  const gun = kalanGun(durum.profil.sinav_tarihi);
-  durum.geriSayim.replaceChildren(
-    h("b", { text: String(gun) }),
-    document.createTextNode("gün kaldı")
-  );
+  // Geri sayım öğrenciye bağlı; yönetici öğrenci seçmeden gün sayısı gösterilmez
+  if (durum.profil) {
+    const gun = kalanGun(durum.profil.sinav_tarihi);
+    durum.geriSayim.replaceChildren(
+      h("b", { text: String(gun) }),
+      document.createTextNode("gün kaldı")
+    );
+  } else {
+    durum.geriSayim.replaceChildren();
+  }
   document.querySelectorAll(".menu-oge").forEach((oge) => {
     oge.classList.toggle("aktif", oge.dataset.kod === sayfa.kod);
   });
@@ -189,6 +206,33 @@ async function sayfaCiz() {
   }
   durum.sayfa = sayfa.kod;
   ustBarGuncelle(sayfa);
+  // Öğrenci seçili değilse yalnız Kullanıcılar açılır
+  if (!durum.profil && sayfa.kod !== "kullanicilar") {
+    durum.icerik.replaceChildren(
+      h(
+        "section",
+        { class: "kart" },
+        h(
+          "div",
+          { class: "kart-baslik" },
+          h(
+            "div",
+            {},
+            h("h2", { text: "Önce öğrenci tanımla" }),
+            h("p", {
+              text: "Panel, müfredat, plan ve analiz öğrenci kaydına göre kurulur. Kullanıcılar sayfasından öğrenci ekleyip sınıfını ata.",
+            })
+          )
+        ),
+        h(
+          "div",
+          { style: { display: "flex", justifyContent: "flex-end" } },
+          h("a", { class: "dugme", href: "#/kullanicilar", text: "Kullanıcılar sayfasına git" })
+        )
+      )
+    );
+    return;
+  }
   durum.icerik.replaceChildren(yukleniyorKarti());
   try {
     await sayfa.modul.ciz(durum.icerik, durum);
@@ -203,8 +247,10 @@ function yonlendirmeKur() {
     window.addEventListener("hashchange", sayfaCiz);
     yonlendirmeKuruldu = true;
   }
-  if (!location.hash) location.hash = "#/panel";
-  else sayfaCiz();
+  // Varsayılan sayfa: yönetici yönetim ekranına, diğerleri kendi paneline düşer
+  if (!location.hash) {
+    location.hash = durum.kullanici?.rol === "yonetici" ? "#/kullanicilar" : "#/panel";
+  } else sayfaCiz();
 }
 
 /** Sayfaların veri değişikliğinden sonra çağırdığı tazeleme */
@@ -261,13 +307,33 @@ async function basla() {
   }
 
   if (!durum.profil) {
-    kurulumGoster(kok, durum.meta, async (profil) => {
-      durum.profiller = [profil, ...durum.profiller];
-      durum.profil = profil;
-      localStorage.setItem("pusula_profil", String(profil.id));
-      kabukCiz();
-      yonlendirmeKur();
-    });
+    // Veli/öğrenci kendi profiline kavuşamaz: öğrenciyi ve sınıfını yönetici atar
+    const rol = durum.kullanici?.rol;
+    if (rol && rol !== "yonetici") {
+      kok.replaceChildren(
+        h(
+          "div",
+          { class: "kurulum" },
+          h(
+            "div",
+            { class: "kurulum-kart", style: { padding: "28px" } },
+            h("h1", {
+              text: "Henüz öğrenci atanmadı",
+              style: { fontSize: "19px", marginBottom: "8px" },
+            }),
+            h("p", {
+              text: "Yönetici hesabına bir öğrenci bağlayınca program burada açılır. Sınıf ve alan bilgisini de yönetici belirler; yeniden denemek için sayfayı yenile.",
+              style: { fontSize: "13px", color: "#6b7280" },
+            })
+          )
+        )
+      );
+      return;
+    }
+    // Yönetici sınava girmez: öğrenci kaydı yokken de yönetim kabuğu açılır
+    if (!location.hash || location.hash === "#/panel") location.hash = "#/kullanicilar";
+    kabukCiz();
+    yonlendirmeKur();
     return;
   }
 

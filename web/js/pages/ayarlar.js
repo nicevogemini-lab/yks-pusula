@@ -3,21 +3,28 @@ import { api } from "../api.js";
 import { h, ikon, rozet, tarihTr, bildir } from "../ui.js";
 
 export const baslik = "Ayarlar";
-export const alt = "Profil, yapay zekâ bağlantısı ve veri";
+export const alt = "Öğrenci profili ve plan ayarları";
 
 export async function ciz(kap, durum) {
-  const [aiDurum, saglik, hedef] = await Promise.all([
+  // Öğrenci profili dışındaki bölümler (yapay zekâ anahtarı, veri/yedek,
+  // oturum, program bilgisi) yalnız yöneticiye görünür
+  const yonetici = (durum.kullanici?.rol || "yonetici") === "yonetici";
+  const hedef = await api.get(`/api/hedef/${durum.profil.id}`);
+  const kartlar = [profilKarti(durum, hedef)];
+
+  if (!yonetici) {
+    if (durum.alt) durum.alt.textContent = "Alan, sınıf, süre ve gün akışı ayarları";
+    kap.replaceChildren(...kartlar);
+    return;
+  }
+
+  const [aiDurum, saglik] = await Promise.all([
     api.get("/api/ai/durum"),
     api.get("/api/saglik"),
-    api.get(`/api/hedef/${durum.profil.id}`),
   ]);
-  kap.replaceChildren(
-    profilKarti(durum, hedef),
-    aiKarti(aiDurum),
-    veriKarti(saglik, durum),
-    oturumKarti(durum),
-    hakkindaKarti()
-  );
+  kartlar.push(aiKarti(aiDurum), veriKarti(saglik, durum), oturumKarti(durum), hakkindaKarti());
+  if (durum.alt) durum.alt.textContent = "Profil, yapay zekâ bağlantısı ve veri";
+  kap.replaceChildren(...kartlar);
 }
 
 /** Oturum sahibinin rolü ve yetki özeti */
@@ -70,9 +77,11 @@ function profilKarti(durum, hedef) {
     durum.meta.alanlar.map((a) => h("option", { value: a.kod, selected: p.alan === a.kod }, a.ad))
   );
 
+  // Sınıf; müfredat kapsamını ve planı belirlediği için yalnız yönetici atar
+  const sinifYoneticide = (durum.kullanici?.rol || "yonetici") === "yonetici";
   const sinifSecim = h(
     "select",
-    { class: "secim" },
+    { class: "secim", disabled: !sinifYoneticide },
     durum.meta.siniflar.map((s) => h("option", { value: s.kod, selected: p.sinif === s.kod }, s.ad))
   );
 
@@ -103,10 +112,9 @@ function profilKarti(durum, hedef) {
     kaydet.disabled = true;
     kaydet.textContent = "Kaydediliyor…";
     try {
-      const yeni = await api.patch(`/api/profil/${p.id}`, {
+      const govde = {
         ad: adGirdi.value.trim() || "Öğrenci",
         alan: alanSecim.value,
-        sinif: Number(sinifSecim.value),
         gunluk_hedef_dk: Number(hedefSecim.value),
         hedef_siralama: Number(siralamaGirdi.value) || 0,
         sinav_tarihi: tarihGirdi.value || null,
@@ -115,8 +123,10 @@ function profilKarti(durum, hedef) {
         okul_baslangic: okulBasGirdi.value || "08:20",
         okul_bitis: okulBitGirdi.value || "15:20",
         okul_donus: okulDonusGirdi.value || "",
-      });
-      const sinifDegisti = Number(sinifSecim.value) !== p.sinif;
+      };
+      if (sinifYoneticide) govde.sinif = Number(sinifSecim.value);
+      const yeni = await api.patch(`/api/profil/${p.id}`, govde);
+      const sinifDegisti = sinifYoneticide && Number(sinifSecim.value) !== p.sinif;
       bildir(
         sinifDegisti
           ? "Profil güncellendi. Sınıf değişti: kapsam dışı konular plandan düştü, planı yeniden üret."
@@ -144,7 +154,11 @@ function profilKarti(durum, hedef) {
         h("div", { class: "form-alan" }, h("label", { text: "Ad" }), adGirdi),
         h("div", { class: "form-alan" }, h("label", { text: "Alan" }), alanSecim),
         h("div", { class: "form-alan" }, h("label", { text: "Sınıf" }), sinifSecim,
-          h("small", { text: "Sınıf değişince konu kapsamı değişir; planı yeniden üret." })),
+          h("small", {
+            text: sinifYoneticide
+              ? "Sınıf değişince konu kapsamı değişir; planı yeniden üret."
+              : "Sınıfı yalnız yönetici belirler.",
+          })),
         h("div", { class: "form-alan" }, h("label", { text: "Günlük hedef" }), hedefSecim),
         h("div", { class: "form-alan" }, h("label", { text: "Hedef sıralama" }), siralamaGirdi,
           h("small", { text: hedefAciklamasi(hedef) })),
@@ -310,13 +324,6 @@ function aiKarti(aiDurum) {
 }
 
 function veriKarti(saglik, durum) {
-  const yeniProfil = h("button", { class: "dugme ikincil kucuk", type: "button" }, "Yeni öğrenci profili");
-  yeniProfil.addEventListener("click", () => {
-    if (!window.confirm("Yeni profil kurulumu açılsın mı? Mevcut veriler silinmez.")) return;
-    localStorage.removeItem("pusula_profil");
-    location.reload();
-  });
-
   return h(
     "section",
     { class: "kart" },
@@ -338,7 +345,7 @@ function veriKarti(saglik, durum) {
           h("small", { text: "Dosyayı Google Drive veya harici diske kopyalaman yeterli." }))),
       h("div", { style: { display: "flex", gap: "8px", justifyContent: "flex-end" } },
         h("a", { class: "dugme sessiz kucuk", href: "#/panel" }, "Panele dön"),
-        yeniProfil)
+        h("a", { class: "dugme ikincil kucuk", href: "#/kullanicilar" }, "Öğrenci ekle / yönet"))
     )
   );
 }

@@ -11,6 +11,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from . import auth, yetki
+from . import seed as seed_servis
 from .data import ALAN_AYT_DERSLERI, BECERI_ETIKET, TUM_DERSLER, alan_ders_kodlari
 from .database import get_db
 from .models import (
@@ -113,6 +114,52 @@ class ProfilGuncelle(BaseModel):
     okul_donus: str | None = Field(default=None, pattern=SAAT_DESENI_BOS)
 
 
+class KonuGiris(BaseModel):
+    """Müfredata yeni konu ekleme (yalnız yönetici)."""
+
+    ders_kod: str = Field(min_length=2, max_length=16)
+    ad: str = Field(min_length=2, max_length=160)
+    sinif: int = 11
+    agirlik: int = Field(default=1, ge=1, le=5)
+    sure_dk: int = Field(default=90, ge=10, le=600)
+    beceri: str = ""
+    onkosul: str = ""
+
+
+class KonuDuzenle(BaseModel):
+    """Konu satırının alanlarını günceller; verilmeyen alan değişmez."""
+
+    ders_kod: str | None = Field(default=None, min_length=2, max_length=16)
+    ad: str | None = Field(default=None, min_length=2, max_length=160)
+    sinif: int | None = None
+    agirlik: int | None = Field(default=None, ge=1, le=5)
+    sure_dk: int | None = Field(default=None, ge=10, le=600)
+    beceri: str | None = None
+    onkosul: str | None = None
+    sira: int | None = Field(default=None, ge=0, le=9999)
+
+
+class DersGiris(BaseModel):
+    """Müfredata yeni ders ekleme (yalnız yönetici)."""
+
+    kod: str = Field(min_length=2, max_length=16, pattern=r"^[A-Za-z0-9-]+$")
+    ad: str = Field(min_length=2, max_length=80)
+    sinav: str = "TYT"
+    alanlar: str = "ortak"
+    soru_sayisi: int = Field(default=0, ge=0, le=200)
+    renk: str = Field(default="#ea580c", pattern=r"^#[0-9a-fA-F]{6}$")
+    sira: int = Field(default=90, ge=0, le=999)
+
+
+class DersDuzenle(BaseModel):
+    ad: str | None = Field(default=None, min_length=2, max_length=80)
+    sinav: str | None = None
+    alanlar: str | None = None
+    soru_sayisi: int | None = Field(default=None, ge=0, le=200)
+    renk: str | None = Field(default=None, pattern=r"^#[0-9a-fA-F]{6}$")
+    sira: int | None = Field(default=None, ge=0, le=999)
+
+
 class KonuDurumGiris(BaseModel):
     profil_id: int
     konu_id: int
@@ -193,6 +240,14 @@ class CalismaGiris(BaseModel):
     notlar: str = ""
 
 
+class YeniProfil(BaseModel):
+    """Öğrenci hesabı açılırken oluşturulacak profil (sınıfı yönetici belirler)."""
+
+    ad: str = Field(default="Öğrenci", max_length=80)
+    sinif: int = 11
+    alan: str = "sayisal"
+
+
 class KullaniciGiris(BaseModel):
     """İlk kurulum ve kullanıcı ekleme gövdesi."""
 
@@ -210,6 +265,8 @@ class KullaniciKayit(BaseModel):
     sifre: str = Field(min_length=6, max_length=128)
     profil_id: int | None = None       # öğrenci: bağlı olduğu profil
     profil_idler: list[int] = []       # veli: gördüğü öğrenciler
+    # Öğrenci hesabıyla birlikte yeni öğrenci kaydı açılabilir
+    yeni_profil: YeniProfil | None = None
 
 
 class KullaniciGuncelle(BaseModel):
@@ -246,7 +303,14 @@ def _sinav_tarihi(sinif: int) -> date:
 
 
 def _alan_konulari(db: Session, profil: Profil) -> list[Konu]:
-    kodlar = alan_ders_kodlari(profil.alan)
+    # Gömülü dersler (veri modülü) + yöneticinin eklediği dersler birlikte
+    kodlar = set(alan_ders_kodlari(profil.alan))
+    for ders in db.execute(select(Ders)).scalars():
+        alanlar = [a.strip() for a in (ders.alanlar or "").split(",") if a.strip()]
+        if "ortak" in alanlar or profil.alan in alanlar:
+            kodlar.add(ders.kod)
+    if not kodlar:
+        return []
     return list(db.execute(select(Konu).where(Konu.ders_kod.in_(kodlar))).scalars())
 
 
@@ -259,6 +323,11 @@ def _durum_map(db: Session, profil_id: int) -> dict[int, KonuDurum]:
 
 def _ders_map(db: Session) -> dict[str, Ders]:
     return {d.kod: d for d in db.execute(select(Ders)).scalars()}
+
+
+def _ders_getir(db: Session, kod: str) -> Ders | None:
+    """Dersi koduyla bulur (``db.get`` birincil anahtar olan ``id`` ile arar)."""
+    return db.execute(select(Ders).where(Ders.kod == kod)).scalars().first()
 
 
 def _saat_dk(saat: str | None) -> int:
@@ -446,29 +515,44 @@ def profiller(db: Session = Depends(get_db)):
     return [p.to_dict() for p in satirlar if izinli is None or p.id in izinli]
 
 
+def _profil_kaydet(
+    db: Session, ad: str, sinif: int, alan: str, **ek_alanlar
+) -> Profil:
+    """Profil satırını doğrulayıp ekler (commit ve plan üretimi çağıranın işi)."""
+    if alan not in GECERLI_ALANLAR:
+        raise HTTPException(400, "Geçersiz alan seçimi")
+    if sinif not in GECERLI_SINIFLAR:
+        raise HTTPException(400, "Geçersiz sınıf seçimi")
+    profil = Profil(
+        ad=(ad or "").strip() or "Öğrenci",
+        alan=alan,
+        sinif=sinif,
+        sinav_tarihi=_sinav_tarihi(sinif),
+        olusturma=datetime.now(),
+        **ek_alanlar,
+    )
+    db.add(profil)
+    db.flush()
+    return profil
+
+
 @api.post("/profil")
 def profil_olustur(veri: ProfilGiris, db: Session = Depends(get_db)):
-    yetki.yazma_kontrol("profil")
-    if veri.alan not in GECERLI_ALANLAR:
-        raise HTTPException(400, "Geçersiz alan seçimi")
-    if veri.sinif not in GECERLI_SINIFLAR:
-        raise HTTPException(400, "Geçersiz sınıf seçimi")
-
-    profil = Profil(
-        ad=veri.ad.strip() or "Öğrenci",
-        alan=veri.alan,
-        sinif=veri.sinif,
+    # Öğrenci kaydını ve sınıfını yalnız yönetici açar (veli/öğrenci kapsamı dağıtamaz)
+    yetki.yonetici_kontrol()
+    profil = _profil_kaydet(
+        db,
+        veri.ad,
+        veri.sinif,
+        veri.alan,
         hedef_siralama=max(0, veri.hedef_siralama),
         gunluk_hedef_dk=max(30, min(720, veri.gunluk_hedef_dk)),
-        sinav_tarihi=_sinav_tarihi(veri.sinif),
         uyanma_saati=veri.uyanma_saati,
         yatma_saati=veri.yatma_saati,
         okul_baslangic=veri.okul_baslangic,
         okul_bitis=veri.okul_bitis,
         okul_donus=veri.okul_donus,
-        olusturma=datetime.now(),
     )
-    db.add(profil)
     db.commit()
     db.refresh(profil)
     gunluk_plan_uret(db, profil, gun_sayisi=7)
@@ -484,6 +568,9 @@ def profil_getir(profil_id: int, db: Session = Depends(get_db)):
 def profil_guncelle(profil_id: int, veri: ProfilGuncelle, db: Session = Depends(get_db)):
     yetki.yazma_kontrol("profil")
     profil = _profil_getir(db, profil_id)
+    # Sınıf; müfredat kapsamını ve planı belirlediği için yalnız yöneticiye açık
+    if veri.sinif is not None and veri.sinif != profil.sinif and not yetki.yonetici_mi():
+        raise HTTPException(403, "Sınıf bilgisini yalnız yönetici değiştirebilir.")
     degisti = False
     for alan_adi, deger in veri.model_dump(exclude_none=True).items():
         if alan_adi == "alan" and deger not in GECERLI_ALANLAR:
@@ -509,6 +596,33 @@ def profil_guncelle(profil_id: int, veri: ProfilGuncelle, db: Session = Depends(
     ):
         gunluk_plan_uret(db, profil, gun_sayisi=7)
     return profil.to_dict()
+
+
+@api.delete("/profil/{profil_id}")
+def profil_sil(profil_id: int, db: Session = Depends(get_db)):
+    """Öğrenci kaydını ve bağlı verilerini siler (yalnız yönetici)."""
+    yetki.yonetici_kontrol()
+    profil = db.get(Profil, profil_id)
+    if profil is None:
+        raise HTTPException(404, "Profil bulunamadı")
+    bagli = db.execute(
+        select(func.count(Kullanici.id)).where(Kullanici.profil_id == profil_id)
+    ).scalar()
+    if bagli:
+        raise HTTPException(
+            400, "Bu öğrenciye bağlı giriş hesabı var; önce hesabı sil veya başka öğrenciye taşı"
+        )
+    # Yabancı anahtarlar SQLite'ta zorlanmaz ama Postgres'te zorlanır: elle temizlenir
+    denemeler = select(Deneme.id).where(Deneme.profil_id == profil_id)
+    db.execute(delete(DenemeKonu).where(DenemeKonu.deneme_id.in_(denemeler)))
+    db.execute(delete(DenemeSonuc).where(DenemeSonuc.deneme_id.in_(denemeler)))
+    db.execute(delete(Deneme).where(Deneme.profil_id == profil_id))
+    for model in (PlanItem, Calisma, KonuDurum, AiMesaj):
+        db.execute(delete(model).where(model.profil_id == profil_id))
+    db.execute(delete(VeliOgrenci).where(VeliOgrenci.profil_id == profil_id))
+    db.delete(profil)
+    db.commit()
+    return {"ok": True}
 
 
 # --------------------------------------------------------------------------
@@ -613,17 +727,30 @@ def kullanici_ekle(veri: KullaniciKayit, db: Session = Depends(get_db)):
     ).scalar_one_or_none()
     if var is not None:
         raise HTTPException(409, "Bu kullanıcı adı zaten var")
-    if veri.rol == "ogrenci" and veri.profil_id is None:
-        raise HTTPException(400, "Öğrenci hesabı için profil seçilmeli")
+    if veri.rol == "ogrenci" and veri.profil_id is None and veri.yeni_profil is None:
+        raise HTTPException(
+            400, "Öğrenci hesabı için var olan öğrenci seçilmeli ya da yeni öğrenci eklenmeli"
+        )
     if veri.profil_id is not None and db.get(Profil, veri.profil_id) is None:
         raise HTTPException(400, "Seçilen profil bulunamadı")
+
+    # Öğrenci hesabıyla birlikte yeni öğrenci kaydı açılıyorsa profil aynı işlemde yazılır
+    yeni_profil: Profil | None = None
+    if veri.rol == "ogrenci" and veri.yeni_profil is not None:
+        yeni_profil = _profil_kaydet(
+            db, veri.yeni_profil.ad, veri.yeni_profil.sinif, veri.yeni_profil.alan
+        )
 
     kullanici = Kullanici(
         kullanici_adi=veri.kullanici_adi.strip(),
         ad_soyad=veri.ad_soyad.strip(),
         sifre_hash=auth.sifre_ozetle(veri.sifre),
         rol=veri.rol,
-        profil_id=veri.profil_id if veri.rol == "ogrenci" else None,
+        profil_id=(
+            yeni_profil.id
+            if yeni_profil is not None
+            else (veri.profil_id if veri.rol == "ogrenci" else None)
+        ),
         aktif=True,
     )
     db.add(kullanici)
@@ -631,6 +758,9 @@ def kullanici_ekle(veri: KullaniciKayit, db: Session = Depends(get_db)):
     if veri.rol == "veli":
         _veli_baglantilarini_yaz(db, kullanici.id, veri.profil_idler)
     db.commit()
+    if yeni_profil is not None:
+        db.refresh(yeni_profil)
+        gunluk_plan_uret(db, yeni_profil, gun_sayisi=7)
     return _kullanici_dict(db, kullanici)
 
 
@@ -893,6 +1023,7 @@ def mufredat(profil_id: int, db: Session = Depends(get_db)):
                 "sinav": ders.sinav if ders else "",
                 "renk": ders.renk if ders else "#ea580c",
                 "soru_sayisi": ders.soru_sayisi if ders else 0,
+                "ozel": bool(ders.ozel) if ders else False,
                 "konular": [],
             },
         )
@@ -907,6 +1038,27 @@ def mufredat(profil_id: int, db: Session = Depends(get_db)):
             }
         )
 
+    # Yöneticinin yeni açtığı dersin henüz konusu olmayabilir: kart yine de
+    # listelenir, böylece altındaki "Konu ekle"ye ulaşılabilir. Öğrenci/veli
+    # tarafında içi boş ders gizli kalır.
+    if yetki.yonetici_mi():
+        for kod, ders in ders_map.items():
+            alanlar = [a.strip() for a in (ders.alanlar or "").split(",") if a.strip()]
+            if "ortak" not in alanlar and profil.alan not in alanlar:
+                continue
+            gruplu.setdefault(
+                kod,
+                {
+                    "kod": kod,
+                    "ad": ders.ad,
+                    "sinav": ders.sinav,
+                    "renk": ders.renk,
+                    "soru_sayisi": ders.soru_sayisi,
+                    "ozel": bool(ders.ozel),
+                    "konular": [],
+                },
+            )
+
     sirali = sorted(gruplu.values(), key=lambda g: (ders_map[g["kod"]].sira if g["kod"] in ders_map else 99, g["kod"]))
     return {
         "profil": profil.to_dict(),
@@ -917,6 +1069,217 @@ def mufredat(profil_id: int, db: Session = Depends(get_db)):
             "aralik": list(sinif_servisi.konu_kapsami(profil.sinif) or []),
         },
     }
+
+
+# --------------------------------------------------------------------------
+# Müfredat düzenleme (yalnız yönetici): konu ve ders ekle / düzenle / sil
+# --------------------------------------------------------------------------
+GECERLI_KONU_SINIFLARI = {9, 10, 11, 12}
+
+
+def _beceri_dogrula(beceri: str) -> str:
+    """Virgüllü beceri kodlarını doğrular ('KB,AB,SD,OK')."""
+    kodlar = [b.strip().upper() for b in (beceri or "").split(",") if b.strip()]
+    bilinmeyen = [k for k in kodlar if k not in BECERI_ETIKET]
+    if bilinmeyen:
+        raise HTTPException(
+            400, f"Geçersiz beceri kodu: {', '.join(bilinmeyen)} (geçerli: KB, AB, SD, OK)"
+        )
+    return ",".join(kodlar)
+
+
+def _onkosul_dogrula(db: Session, onkosul: str) -> str:
+    """Virgüllü konu kodlarının gerçekten var olduğunu doğrular."""
+    kodlar = [o.strip() for o in (onkosul or "").split(",") if o.strip()]
+    if not kodlar:
+        return ""
+    var = set(db.execute(select(Konu.kod).where(Konu.kod.in_(kodlar))).scalars())
+    eksik = [k for k in kodlar if k not in var]
+    if eksik:
+        raise HTTPException(400, f"Ön koşul konusu bulunamadı: {', '.join(eksik)}")
+    return ",".join(kodlar)
+
+
+def _alanlar_dogrula(alanlar: str) -> str:
+    """Dersin hizmet ettiği alanlar: 'ortak' ya da sayisal/ea/sozel listesi."""
+    parcalar = [a.strip() for a in (alanlar or "").split(",") if a.strip()]
+    if parcalar == ["ortak"]:
+        return "ortak"
+    gecersiz = [a for a in parcalar if a not in GECERLI_ALANLAR]
+    if gecersiz or not parcalar:
+        raise HTTPException(400, "Alan listesi 'ortak' ya da sayisal/ea/sozel olmalı")
+    return ",".join(parcalar)
+
+
+def _konu_kod_uret(db: Session, ders_kod: str) -> str:
+    """Yönetici konuları için benzersiz kod: <DERS>-OZ<n>."""
+    n = 1
+    while True:
+        kod = f"{ders_kod}-OZ{n}"
+        if db.execute(select(Konu.id).where(Konu.kod == kod)).first() is None:
+            return kod[:24]
+        n += 1
+
+
+def _konu_sil(db: Session, konu: Konu) -> None:
+    """Konuyu bağımlılıklarıyla siler; gömülü konuyu eşitlemeye karşı işaretler."""
+    kod = konu.kod
+    seed_servis._konu_bagimliliklarini_temizle(db, konu.id)
+    if not konu.ozel:
+        seed_servis.kod_silindi_olarak_isle(db, "konu", kod)
+    # Diğer konuların ön koşul listesinden de çıkar
+    for diger in db.execute(select(Konu).where(Konu.onkosul.like(f"%{kod}%"))).scalars():
+        kalanlar = [o for o in (diger.onkosul or "").split(",") if o and o != kod]
+        diger.onkosul = ",".join(kalanlar)
+    db.delete(konu)
+
+
+@api.post("/mufredat/konu")
+def mufredat_konu_ekle(veri: KonuGiris, db: Session = Depends(get_db)):
+    """Müfredata konu ekler (yalnız yönetici)."""
+    yetki.yonetici_kontrol()
+    if _ders_getir(db, veri.ders_kod) is None:
+        raise HTTPException(400, "Ders bulunamadı")
+    if veri.sinif not in GECERLI_KONU_SINIFLARI:
+        raise HTTPException(400, "Sınıf 9, 10, 11 veya 12 olmalı")
+    sira = (
+        db.execute(select(func.max(Konu.sira)).where(Konu.ders_kod == veri.ders_kod)).scalar()
+        or 0
+    ) + 1
+    konu = Konu(
+        kod=_konu_kod_uret(db, veri.ders_kod),
+        ders_kod=veri.ders_kod,
+        ad=veri.ad.strip(),
+        sinif=veri.sinif,
+        agirlik=veri.agirlik,
+        sure_dk=veri.sure_dk,
+        beceri=_beceri_dogrula(veri.beceri),
+        onkosul=_onkosul_dogrula(db, veri.onkosul),
+        sira=sira,
+        ozel=True,
+    )
+    db.add(konu)
+    db.commit()
+    db.refresh(konu)
+    return konu.to_dict()
+
+
+@api.patch("/mufredat/konu/{konu_id}")
+def mufredat_konu_duzenle(konu_id: int, veri: KonuDuzenle, db: Session = Depends(get_db)):
+    """Konu alanlarını günceller (yalnız yönetici)."""
+    yetki.yonetici_kontrol()
+    konu = db.get(Konu, konu_id)
+    if konu is None:
+        raise HTTPException(404, "Konu bulunamadı")
+    if veri.ders_kod is not None and veri.ders_kod != konu.ders_kod:
+        if _ders_getir(db, veri.ders_kod) is None:
+            raise HTTPException(400, "Ders bulunamadı")
+        konu.ders_kod = veri.ders_kod
+    if veri.ad is not None:
+        konu.ad = veri.ad.strip()
+    if veri.sinif is not None:
+        if veri.sinif not in GECERLI_KONU_SINIFLARI:
+            raise HTTPException(400, "Sınıf 9, 10, 11 veya 12 olmalı")
+        konu.sinif = veri.sinif
+    if veri.agirlik is not None:
+        konu.agirlik = veri.agirlik
+    if veri.sure_dk is not None:
+        konu.sure_dk = veri.sure_dk
+    if veri.beceri is not None:
+        konu.beceri = _beceri_dogrula(veri.beceri)
+    if veri.onkosul is not None:
+        konu.onkosul = _onkosul_dogrula(db, veri.onkosul)
+    if veri.sira is not None:
+        konu.sira = veri.sira
+    # Düzenlenen satır artık yöneticiye aittir: gömülü veri güncellemesi ezmez
+    konu.ozel = True
+    db.commit()
+    db.refresh(konu)
+    return konu.to_dict()
+
+
+@api.delete("/mufredat/konu/{konu_id}")
+def mufredat_konu_sil(konu_id: int, db: Session = Depends(get_db)):
+    """Konuyu müfredattan kaldırır; öğrenci durum kayıtları da temizlenir."""
+    yetki.yonetici_kontrol()
+    konu = db.get(Konu, konu_id)
+    if konu is None:
+        raise HTTPException(404, "Konu bulunamadı")
+    kod = konu.kod
+    _konu_sil(db, konu)
+    db.commit()
+    return {"ok": True, "kod": kod}
+
+
+@api.post("/mufredat/ders")
+def mufredat_ders_ekle(veri: DersGiris, db: Session = Depends(get_db)):
+    """Müfredata ders ekler (yalnız yönetici)."""
+    yetki.yonetici_kontrol()
+    kod = veri.kod.strip().upper()
+    if _ders_getir(db, kod) is not None:
+        raise HTTPException(400, "Bu ders kodu zaten var")
+    if veri.sinav not in {"TYT", "AYT"}:
+        raise HTTPException(400, "Sınav TYT veya AYT olmalı")
+    ders = Ders(
+        kod=kod,
+        ad=veri.ad.strip(),
+        sinav=veri.sinav,
+        alanlar=_alanlar_dogrula(veri.alanlar),
+        soru_sayisi=veri.soru_sayisi,
+        renk=veri.renk,
+        sira=veri.sira,
+        ozel=True,
+    )
+    db.add(ders)
+    db.commit()
+    db.refresh(ders)
+    return ders.to_dict()
+
+
+@api.patch("/mufredat/ders/{ders_kod}")
+def mufredat_ders_duzenle(ders_kod: str, veri: DersDuzenle, db: Session = Depends(get_db)):
+    """Dersin adı, soru sayısı, rengi gibi alanları günceller (yalnız yönetici)."""
+    yetki.yonetici_kontrol()
+    ders = _ders_getir(db, ders_kod)
+    if ders is None:
+        raise HTTPException(404, "Ders bulunamadı")
+    if veri.ad is not None:
+        ders.ad = veri.ad.strip()
+    if veri.sinav is not None:
+        if veri.sinav not in {"TYT", "AYT"}:
+            raise HTTPException(400, "Sınav TYT veya AYT olmalı")
+        ders.sinav = veri.sinav
+    if veri.alanlar is not None:
+        ders.alanlar = _alanlar_dogrula(veri.alanlar)
+    if veri.soru_sayisi is not None:
+        ders.soru_sayisi = veri.soru_sayisi
+    if veri.renk is not None:
+        ders.renk = veri.renk
+    if veri.sira is not None:
+        ders.sira = veri.sira
+    # Renk gibi alanlar gömülü paletle ezilmesin
+    ders.ozel = True
+    db.commit()
+    db.refresh(ders)
+    return ders.to_dict()
+
+
+@api.delete("/mufredat/ders/{ders_kod}")
+def mufredat_ders_sil(ders_kod: str, db: Session = Depends(get_db)):
+    """Dersi ve altındaki tüm konuları kaldırır (yalnız yönetici)."""
+    yetki.yonetici_kontrol()
+    ders = _ders_getir(db, ders_kod)
+    if ders is None:
+        raise HTTPException(404, "Ders bulunamadı")
+    konular = list(db.execute(select(Konu).where(Konu.ders_kod == ders_kod)).scalars())
+    for konu in konular:
+        _konu_sil(db, konu)
+    if not ders.ozel:
+        # Gömülü ders açılışta geri eklenmesin
+        seed_servis.kod_silindi_olarak_isle(db, "ders", ders_kod)
+    db.delete(ders)
+    db.commit()
+    return {"ok": True, "konu": len(konular)}
 
 
 @api.post("/konu-durum")
@@ -1148,7 +1511,7 @@ def plan_madde_ekle(profil_id: int, veri: PlanMaddeGiris, db: Session = Depends(
     if var is not None:
         return {"ok": True, "madde_id": var.id, "zaten_var": True, "tarih": tarih.isoformat()}
 
-    ders = db.get(Ders, konu.ders_kod)
+    ders = _ders_getir(db, konu.ders_kod)
     son_sira = db.execute(
         select(func.max(PlanItem.sira)).where(
             PlanItem.profil_id == profil.id, PlanItem.tarih == tarih
@@ -1449,7 +1812,8 @@ def ai_durum(db: Session = Depends(get_db)):
 @api.post("/ai/anahtar")
 def ai_anahtar_kaydet(veri: AnahtarGiris, db: Session = Depends(get_db)):
     """Anahtarı günceller. Boş anahtar gönderilirse mevcut anahtar korunur."""
-    yetki.yazma_kontrol("ayar")
+    # Anahtar ayarı Ayarlar sayfasının yönetici bölümündedir
+    yetki.yonetici_kontrol()
     anahtar, model = ai_servis.anahtar_getir(db)
     yeni_anahtar = "" if veri.sil else (veri.anahtar.strip() or anahtar)
     yeni_model = veri.model.strip() or model
@@ -1470,7 +1834,7 @@ def ai_test(veri: AnahtarTest, db: Session = Depends(get_db)):
 
     Anahtar kaydedilmez; kullanıcı önce deneyip sonra kaydedebilir.
     """
-    yetki.yazma_kontrol("ayar")
+    yetki.yonetici_kontrol()
     kayitli_anahtar, kayitli_model = ai_servis.anahtar_getir(db)
     anahtar = veri.anahtar.strip() or kayitli_anahtar
     model = veri.model.strip() or kayitli_model
@@ -1490,6 +1854,9 @@ def yedek_indir():
     from fastapi.responses import FileResponse
 
     from .database import DB_YOLU
+
+    # Tüm kurumun verisi tek dosyada: indirme yalnız yöneticiye açık
+    yetki.yonetici_kontrol()
 
     if DB_YOLU is None:
         raise HTTPException(

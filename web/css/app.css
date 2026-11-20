@@ -1441,6 +1441,44 @@ ol.balon-liste { list-style: decimal outside; }
   .menu-oge.aktif { box-shadow: none; }
 }
 
+/* 9) Müfredat düzenleme (yalnız yönetici) ------------------ */
+.konu-satir.yonetici { grid-template-columns: minmax(0, 1fr) 128px 96px auto; }
+.konu-islem { display: flex; gap: 2px; justify-content: flex-end; }
+.simge-dugme {
+  width: 26px; height: 26px;
+  border: none; border-radius: 7px;
+  background: transparent; color: var(--solgun);
+  font-size: 12px; line-height: 1;
+  display: inline-flex; align-items: center; justify-content: center;
+  cursor: pointer;
+}
+.simge-dugme:hover { background: #f1f2f6; color: var(--marka-koyu); }
+.simge-dugme.sil:hover { background: #fdecec; color: #b42318; }
+
+.mufredat-altlik {
+  display: flex; gap: 6px; flex-wrap: wrap; align-items: center;
+  padding: 10px 18px;
+  background: #fcfcfd;
+  border-top: 1px solid #f2f3f6;
+}
+.mufredat-form { display: grid; gap: 10px; padding: 14px 18px; background: #fbfbfc; }
+.mufredat-form .izgara {
+  display: grid; gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+.mufredat-form .form-alan label {
+  display: block; margin-bottom: 4px;
+  font-size: 12px; font-weight: 550; color: var(--solgun);
+}
+.mufredat-form .form-alan small { font-size: 11px; color: var(--solgun); }
+.mufredat-form .dugmeler { display: flex; gap: 8px; justify-content: flex-end; }
+.mufredat-form > b { font-size: 13px; }
+
+@media (max-width: 900px) {
+  .konu-satir.yonetici { grid-template-columns: 1fr; }
+  .konu-satir.yonetici .konu-islem { justify-content: flex-start; }
+}
+
 /* 8) Yazdırma ---------------------------------------------- */
 @media print {
   .yan-menu, .ust-bar, .dugme, .sohbet-giris { display: none !important; }

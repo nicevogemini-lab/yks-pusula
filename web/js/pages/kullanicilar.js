@@ -3,7 +3,7 @@ import { api } from "../api.js";
 import { h, ikon, rozet, bosDurum, bildir } from "../ui.js";
 
 export const baslik = "Kullanıcılar";
-export const alt = "Hesap tanımlama, öğrenci-veli bağlantısı ve şifre sıfırlama";
+export const alt = "Öğrenci/sınıf tanımı, öğrenci-veli bağlantısı ve şifre sıfırlama";
 
 const ROLLER = [
   { kod: "yonetici", ad: "Yönetici", not: "Her şey + kullanıcı tanımlama" },
@@ -26,11 +26,234 @@ export async function ciz(kap, durum) {
     api.get("/api/profiller"),
   ]);
   profiller = profilListesi;
-  kap.replaceChildren(formKarti(), listeKarti(liste));
+  uygulama.profiller = profilListesi; // üst bardaki öğrenci seçici güncel kalsın
+  kap.replaceChildren(ogrenciKarti(liste), formKarti(), listeKarti(liste));
 }
 
 function yenidenCiz() {
   return ciz(uygulama.icerik, uygulama);
+}
+
+// ------------------------------------------------------------ öğrenciler
+// Sınıf müfredat kapsamını ve planı belirlediği için yalnız burada (yönetici)
+// atanır; öğrenci ve veli kendi sınıfını değiştiremez.
+function ogrenciKarti(kullanicilar) {
+  const adGirdi = h("input", {
+    class: "alan",
+    type: "text",
+    maxlength: "80",
+    placeholder: "ör. Elif Yılmaz",
+  });
+  const sinifSecim = h(
+    "select",
+    { class: "secim" },
+    uygulama.meta.siniflar.map((s) =>
+      h("option", { value: s.kod, selected: s.kod === 11 }, s.ad))
+  );
+  const alanSecim = h(
+    "select",
+    { class: "secim" },
+    uygulama.meta.alanlar.map((a) => h("option", { value: a.kod }, a.ad))
+  );
+  const ekle = h("button", { class: "dugme", type: "button" }, "Öğrenci ekle");
+  ekle.addEventListener("click", async () => {
+    ekle.disabled = true;
+    ekle.textContent = "Ekleniyor…";
+    try {
+      const yeni = await api.post("/api/profil", {
+        ad: adGirdi.value.trim() || "Öğrenci",
+        sinif: Number(sinifSecim.value),
+        alan: alanSecim.value,
+      });
+      bildir("Öğrenci eklendi, yedi günlük planı hazırlandı.");
+      if (!uygulama.profil) {
+        // İlk öğrenci: kabuk ve diğer sayfalar bu kayıtla açılır
+        if (!uygulama.profiller.some((p) => p.id === yeni.id)) uygulama.profiller.push(yeni);
+        await uygulama.profilGuncellendi(yeni);
+        return;
+      }
+      await yenidenCiz();
+    } catch (hata) {
+      bildir(hata.message, "hata");
+      ekle.disabled = false;
+      ekle.textContent = "Öğrenci ekle";
+    }
+  });
+
+  const tablo = h("table", { class: "sonuc-tablo" });
+  tablo.append(
+    h(
+      "thead",
+      {},
+      h(
+        "tr",
+        {},
+        h("th", { text: "Öğrenci" }),
+        h("th", { text: "Sınıf" }),
+        h("th", { text: "Alan" }),
+        h("th", { text: "Bağlı hesap" }),
+        h("th", { text: "" })
+      )
+    ),
+    h("tbody", {}, profiller.map((p) => ogrenciSatiri(p, kullanicilar)))
+  );
+
+  const sinifSayisi = (s) => profiller.filter((p) => p.sinif === s).length;
+  const ozet =
+    `${profiller.length} öğrenci · 11. sınıf ${sinifSayisi(11)} · 12. sınıf ${sinifSayisi(12)}` +
+    ` · mezun ${sinifSayisi(0)} · öğrenci hesabı ${kullanicilar.filter((k) => k.rol === "ogrenci").length}`;
+
+  return h(
+    "section",
+    { class: "kart" },
+    h(
+      "div",
+      { class: "kart-baslik" },
+      h(
+        "div",
+        {},
+        h("h2", { text: "Öğrenciler ve sınıfları" }),
+        h("p", { text: `${ozet} · sınıf seçimi müfredat kapsamını, planı ve analizi belirler.` })
+      )
+    ),
+    profiller.length
+      ? tablo
+      : bosDurum("Henüz öğrenci yok", "Aşağıdaki satırdan ilk öğrenciyi ekle."),
+    h(
+      "div",
+      {
+        class: "ayar-izgara",
+        style: { marginTop: "14px", gridTemplateColumns: "2fr 1fr 1fr auto" },
+      },
+      h("div", { class: "form-alan" }, h("label", { text: "Yeni öğrenci" }), adGirdi),
+      h("div", { class: "form-alan" }, h("label", { text: "Sınıf" }), sinifSecim),
+      h("div", { class: "form-alan" }, h("label", { text: "Alan" }), alanSecim),
+      h("div", { style: { display: "flex", alignItems: "flex-end" } }, ekle)
+    )
+  );
+}
+
+function ogrenciSatiri(p, kullanicilar) {
+  const hesap = kullanicilar.find((k) => k.rol === "ogrenci" && k.profil_id === p.id);
+  const veliler = kullanicilar.filter(
+    (k) => k.rol === "veli" && (k.profil_idler || []).includes(p.id)
+  );
+
+  const sinifSecim = h(
+    "select",
+    { class: "secim" },
+    uygulama.meta.siniflar.map((s) =>
+      h("option", { value: s.kod, selected: p.sinif === s.kod }, s.ad))
+  );
+  sinifSecim.addEventListener("change", () =>
+    profilGuncelle(
+      p,
+      { sinif: Number(sinifSecim.value) },
+      "Sınıf güncellendi: kapsam ve plan yeni sınıfa göre yeniden üretildi."
+    )
+  );
+
+  const alanSecim = h(
+    "select",
+    { class: "secim" },
+    uygulama.meta.alanlar.map((a) =>
+      h("option", { value: a.kod, selected: p.alan === a.kod }, a.ad))
+  );
+  alanSecim.addEventListener("change", () =>
+    profilGuncelle(
+      p,
+      { alan: alanSecim.value },
+      "Alan güncellendi: plan yeni ders kümesine göre yeniden üretildi."
+    )
+  );
+
+  const baglanti = [];
+  if (hesap) baglanti.push(hesap.ad_soyad || hesap.kullanici_adi);
+  if (veliler.length) baglanti.push(`veli: ${veliler.map((v) => v.ad_soyad || v.kullanici_adi).join(", ")}`);
+
+  return h(
+    "tr",
+    {},
+    h(
+      "td",
+      {},
+      h("b", { text: p.ad }),
+      h("small", {
+        text: `#${p.id}`,
+        style: { display: "block", color: "#6b7280", marginTop: "2px" },
+      })
+    ),
+    h("td", {}, sinifSecim),
+    h("td", {}, alanSecim),
+    h("td", {
+      text: baglanti.join(" · ") || "Hesap bağlanmadı",
+      style: { fontSize: "12.5px", color: "#6b7280" },
+    }),
+    h(
+      "td",
+      {},
+      h(
+        "div",
+        { style: { display: "flex", gap: "6px", justifyContent: "flex-end" } },
+        h(
+          "button",
+          {
+            class: "dugme ikincil kucuk",
+            type: "button",
+            title: "Bu öğrencinin panelini denetle",
+            onclick: () => denetle(p),
+          },
+          ikon("grafik", 13),
+          "Denetle"
+        ),
+        h(
+          "button",
+          {
+            class: "dugme sessiz kucuk",
+            type: "button",
+            title: "Öğrenci kaydını sil",
+            onclick: () => ogrenciSil(p),
+          },
+          "Sil"
+        )
+      )
+    )
+  );
+}
+
+/** Öğrenciyi seçip panelini açar (yönetici denetimi) */
+async function denetle(p) {
+  await uygulama.profilGuncellendi(p);
+  if (location.hash !== "#/panel") location.hash = "#/panel";
+}
+
+/** Öğrenci kaydını ve bağlı verilerini siler */
+async function ogrenciSil(p) {
+  if (!confirm(`${p.ad} öğrenci kaydı, denemeleri ve planı silinsin mi?`)) return;
+  const acikti = uygulama.profil?.id === p.id;
+  try {
+    await api.sil(`/api/profil/${p.id}`);
+    bildir("Öğrenci silindi.");
+    // Açık olan kayıt silindiyse tüm ekran sunucuyla yeniden eşitlenir
+    if (acikti) {
+      localStorage.removeItem("pusula_profil");
+      location.reload();
+      return;
+    }
+    await yenidenCiz();
+  } catch (hata) {
+    bildir(hata.message, "hata");
+  }
+}
+
+async function profilGuncelle(p, govde, mesaj) {
+  try {
+    await api.patch(`/api/profil/${p.id}`, govde);
+    bildir(mesaj);
+  } catch (hata) {
+    bildir(hata.message, "hata");
+  }
+  await yenidenCiz();
 }
 
 // ---------------------------------------------------------------- form
@@ -68,9 +291,12 @@ function formKarti() {
   const ogrenciSecim = h(
     "select",
     { class: "secim" },
-    profiller.map((p) =>
-      h("option", { value: p.id, selected: mevcut?.profil_id === p.id }, `${p.ad} · ${p.sinif_etiketi}`))
+    profiller.length
+      ? profiller.map((p) =>
+          h("option", { value: p.id, selected: mevcut?.profil_id === p.id }, `${p.ad} · ${p.sinif_etiketi}`))
+      : [h("option", { value: "", text: "Önce yukarıdan öğrenci ekle" })]
   );
+  ogrenciSecim.disabled = profiller.length === 0;
 
   // Veli: birden çok öğrenciyi görür
   const ogrenciKutulari = h(
@@ -162,7 +388,7 @@ function formKarti() {
         h("p", {
           text: mevcut
             ? "Kullanıcı adı değiştirilemez; şifre alanı boş bırakılırsa eski şifre geçerli kalır."
-            : "Öğrenci hesabı bir profille eşleşmeli. Veli hesabı birden çok öğrenciyi görebilir.",
+            : "Öğrenci hesabı bir öğrenci kaydıyla eşleşmeli. Veli hesabı birden çok öğrenciyi görebilir; sınıfı yukarıdaki öğrenci kartından atarsın.",
         })
       )
     ),
@@ -247,10 +473,16 @@ function listeKarti(liste) {
 function satir(k) {
   const baglanti =
     k.rol === "ogrenci"
-      ? k.profil_adi || "—"
+      ? (() => {
+          const profil = profiller.find((p) => p.id === k.profil_id);
+          return profil ? `${profil.ad} · ${profil.sinif_etiketi}` : k.profil_adi || "—";
+        })()
       : k.rol === "veli"
       ? (k.profil_idler || [])
-          .map((pid) => profiller.find((p) => p.id === pid)?.ad || `#${pid}`)
+          .map((pid) => {
+            const profil = profiller.find((p) => p.id === pid);
+            return profil ? `${profil.ad} · ${profil.sinif_etiketi}` : `#${pid}`;
+          })
           .join(", ") || "Öğrenci atanmadı"
       : "Tüm öğrenciler";
 

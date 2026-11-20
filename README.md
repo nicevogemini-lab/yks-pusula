@@ -64,12 +64,18 @@ python -m venv .venv
 
 ## İlk açılış
 
-1. Alan seçimi (Sayısal / Eşit Ağırlık / Sözel)
-2. Sınıf seçimi (11 / 12 / Mezun) — sınav tarihi otomatik hesaplanır
-3. Günlük hedef süre ve hedef sıralama
+Yönetici sınava girmez; öğrenci kayıtlarını ve hesapları yönetir.
 
-Kurulum bitince panel açılır: kalan gün, müfredat ilerlemesi, bugünün planı,
-öncelikli konular, haftalık çalışma grafiği ve son denemeler.
+1. **Yönetici hesabı**: canlıda `/kurulum` ekranı, yerelde giriş kapısı kapalıyken otomatik.
+2. **Kullanıcılar → Öğrenciler ve sınıfları**: öğrenci ekle (ad + sınıf + alan).
+   Sınıf (11 / 12 / Mezun) müfredat kapsamını, planı ve analizi belirler; sınav
+   tarihi otomatik hesaplanır ve sınıfı yalnız yönetici değiştirebilir.
+3. Aynı sayfadan öğrenciye giriş hesabı aç, veliye bir veya birden çok öğrenci ata.
+4. Öğrenci/veli girişinde program atanan sınıfa göre kurulur: öğrenci yalnız kendini,
+   veli yalnız kendi öğrencilerini görür.
+
+Günlük hedef süre, hedef sıralama ve gün akışı saatleri **Ayarlar** sayfasındadır;
+hedef değişince 7 günlük plan anında yeniden üretilir.
 
 ## Hedef sıralama → netler → program
 
@@ -95,11 +101,12 @@ kayar. Hedef sıralama boş bırakılırsa 100.000 eşdeğeri kullanılır ve ar
 | Sayfa | Ne yapar |
 | --- | --- |
 | Panel | Günlük özet, **hedef sıralama ve gereken netler**, öncelikli konular, haftalık çalışma, ders bazlı ilerleme |
-| Müfredat | Ders → konu listesi; durum (başlanmadı / çalışılıyor / tamam / tekrar) ve 1-5 özgüven puanı |
+| Müfredat | Ders → konu listesi; durum (başlanmadı / çalışılıyor / tamam / tekrar) ve 1-5 özgüven puanı; **yönetici ders ve konu ekleyip düzenleyip kaldırabilir** (elle yapılan değişiklikler açılıştaki gömülü müfredat güncellemesiyle ezilmez) |
 | Plan | Günlük / haftalık / aylık program; açık konu önceliği, **her gün matematik + paragraf**, aylık takvimde cumartesi deneme, pazar tekrar |
 | Denemeler | TYT ve AYT deneme girişi, canlı net hesabı, **hedefe kalan net**, tahmini puan, **konu bazlı açık analizi**, **yapay zekâ değerlendirmesi ve deneme takvimi** |
 | Yapay Zekâ Koçu | Kişisel sohbet + beceri temelli soru üretimi; hedef sıralamaya göre ders ve program önerisi |
-| Ayarlar | Profil, **hedef sıralama (planı belirler)**, Gemini anahtarı, veritabanı yedeği |
+| Ayarlar | Profil, **hedef sıralama (planı belirler)**, Gemini anahtarı, veritabanı yedeği — öğrenci profili kartı dışındaki bölümler yalnız yöneticide |
+| Kullanıcılar | Yönetici: öğrenci kaydı ve **sınıf ataması**, öğrenci/veli hesapları, veliye öğrenci bağlama, şifre sıfırlama, öğrenci panelini denetleme/silme |
 
 ### Konu ağırlığı ve deneme analizi
 
@@ -272,6 +279,6 @@ kapsanmıştır. Arayüz değişikliğinden sonra en az bir kez tarayıcıda tur
 - Konu ağırlıkları ve puan katsayıları tahminidir; ÖSYM/MEB resmî tablolarıyla
   güncellenmeli. Hedef sıralamanın net karşılıkları da yaklaşık eşik tablosudur
   (`app/services/hedef.py`) — kesin puan/sıralama iddiası taşımaz.
-- Çoklu öğrenci aynı kurulumda çalışır ama profil değiştirme arayüzü henüz Ayarlar'da
-  ("Yeni öğrenci profili").
+- Çoklu öğrenci aynı kurulumda çalışır; profil değiştirme **Ayarlar > Öğrenci profili**,
+  yeni öğrenci ekleme **Kullanıcılar** sayfasındandır.
 - Deneme sorularının fotoğraftan okunması, veli raporu ve mobil uygulama kapsam dışı.
