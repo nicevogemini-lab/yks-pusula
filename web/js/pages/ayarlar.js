@@ -14,6 +14,7 @@ export async function ciz(kap, durum) {
 
   if (!yonetici) {
     if (durum.alt) durum.alt.textContent = "Alan, sınıf, süre ve gün akışı ayarları";
+    kartlar.push(sifreKarti(durum));
     kap.replaceChildren(...kartlar);
     return;
   }
@@ -22,7 +23,7 @@ export async function ciz(kap, durum) {
     api.get("/api/ai/durum"),
     api.get("/api/saglik"),
   ]);
-  kartlar.push(aiKarti(aiDurum), veriKarti(saglik, durum), oturumKarti(durum), hakkindaKarti());
+  kartlar.push(aiKarti(aiDurum), veriKarti(saglik, durum), oturumKarti(durum), sifreKarti(durum), hakkindaKarti());
   if (durum.alt) durum.alt.textContent = "Profil, yapay zekâ bağlantısı ve veri";
   kap.replaceChildren(...kartlar);
 }
@@ -62,6 +63,62 @@ function oturumKarti(durum) {
           h("p", { style: { fontSize: "13px" }, text: yetkiler[kullanici.rol] || "" }))),
       h("div", { style: { display: "flex", justifyContent: "flex-end", gap: "8px" } },
         h("a", { class: "dugme ikincil kucuk", href: "/cikis" }, "Oturumu kapat"))
+    )
+  );
+}
+
+/** Oturum sahibinin kendi şifresini değiştirmesi */
+function sifreKarti(durum) {
+  if (!durum.kullanici?.giris_zorunlu) return h("span");
+  const mevcut = h("input", {
+    class: "alan", type: "password", autocomplete: "current-password",
+    placeholder: "Şu an kullandığın şifre",
+  });
+  const yeni = h("input", {
+    class: "alan", type: "password", autocomplete: "new-password",
+    placeholder: "En az 6 karakter",
+  });
+  const tekrar = h("input", {
+    class: "alan", type: "password", autocomplete: "new-password",
+    placeholder: "Yeni şifreyi tekrar yaz",
+  });
+
+  const kaydet = h("button", { class: "dugme", type: "button" }, "Şifreyi değiştir");
+  kaydet.addEventListener("click", async () => {
+    if (!mevcut.value) return bildir("Mevcut şifreyi yaz.", "hata");
+    if (yeni.value.length < 6) return bildir("Yeni şifre en az 6 karakter olmalı.", "hata");
+    if (yeni.value !== tekrar.value) return bildir("İki yeni şifre birbirini tutmuyor.", "hata");
+    kaydet.disabled = true;
+    kaydet.textContent = "Kaydediliyor…";
+    try {
+      await api.post("/api/sifre", { mevcut: mevcut.value, yeni: yeni.value });
+      mevcut.value = "";
+      yeni.value = "";
+      tekrar.value = "";
+      bildir("Şifre değişti. Bir sonraki girişte yeni şifreyi kullan.");
+    } catch (hata) {
+      bildir(hata.message, "hata");
+    } finally {
+      kaydet.disabled = false;
+      kaydet.textContent = "Şifreyi değiştir";
+    }
+  });
+
+  return h(
+    "section",
+    { class: "kart" },
+    h("div", { class: "kart-baslik" },
+      h("div", {},
+        h("h2", { text: "Şifre" }),
+        h("p", { text: "Bu hesabın şifresini kendin belirle. Yönetici unutulan şifreyi Kullanıcılar sayfasından sıfırlar." }))),
+    h(
+      "div",
+      { class: "ayar-bolum" },
+      h("div", { class: "ayar-izgara" },
+        h("div", { class: "form-alan" }, h("label", { text: "Mevcut şifre" }), mevcut),
+        h("div", { class: "form-alan" }, h("label", { text: "Yeni şifre" }), yeni),
+        h("div", { class: "form-alan" }, h("label", { text: "Yeni şifre (tekrar)" }), tekrar)),
+      h("div", { style: { display: "flex", justifyContent: "flex-end" } }, kaydet)
     )
   );
 }

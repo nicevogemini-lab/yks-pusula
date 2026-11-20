@@ -5,9 +5,9 @@ platformu. Öğrencinin alanı (Sayısal / Eşit Ağırlık / Sözel), sınıf d
 mezun) ve hedefi doğrultusunda günlük çalışma planı üretir; deneme sonuçlarını
 analiz eder; yapay zekâ koçuyla kişisel rehberlik verir.
 
-> Sürüm 3.1 — canlıda çalışıyor (Render + Neon PostgreSQL). Müfredat haritası,
+> Sürüm 3.2 — canlıda çalışıyor (Render + Neon PostgreSQL). Müfredat haritası,
 > plan üretimi, deneme analizi, koç sohbeti, yönetici için müfredat düzenleme,
-> kullanıcı yönetimi ve bulut yedekleme.
+> kullanıcı yönetimi, kendi şifresini değiştirme ve bulut yedekleme.
 
 ## Neden bu kurgu
 

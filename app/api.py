@@ -280,6 +280,13 @@ class KullaniciGuncelle(BaseModel):
     aktif: bool | None = None
 
 
+class SifreDegisiklik(BaseModel):
+    """Oturum sahibinin kendi şifresini değiştirmesi."""
+
+    mevcut: str = Field(min_length=1, max_length=128)
+    yeni: str = Field(min_length=6, max_length=128)
+
+
 # --------------------------------------------------------------------------
 # Yardımcılar
 # --------------------------------------------------------------------------
@@ -705,6 +712,25 @@ def kurulum_yap(veri: KullaniciGiris, db: Session = Depends(get_db)):
 @api.get("/oturum")
 def oturum(db: Session = Depends(get_db)):
     return _oturum_bilgisi(db)
+
+
+@api.post("/sifre")
+def sifre_degistir(veri: SifreDegisiklik, db: Session = Depends(get_db)):
+    """Oturum sahibi kendi şifresini değiştirir (mevcut şifre doğrulanır)."""
+    kullanici = yetki.mevcut_kullanici()
+    if kullanici is None:
+        raise HTTPException(401, "Oturum gerekli")
+    if not auth.sifre_dogrula(veri.mevcut, kullanici.sifre_hash):
+        raise HTTPException(400, "Mevcut şifre yanlış.")
+    hata = auth.sifre_uygun(veri.yeni)
+    if hata:
+        raise HTTPException(400, hata)
+    if auth.sifre_dogrula(veri.yeni, kullanici.sifre_hash):
+        raise HTTPException(400, "Yeni şifre mevcut şifreyle aynı olamaz.")
+    kullanici.sifre_hash = auth.sifre_ozetle(veri.yeni)
+    db.add(kullanici)
+    db.commit()
+    return {"ok": True}
 
 
 @api.get("/kullanicilar")
