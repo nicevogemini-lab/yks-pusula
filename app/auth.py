@@ -284,6 +284,110 @@ _CSS = """
     border-radius: 10px;
   }
   .dip { margin: 18px 0 0; font-size: 11px; line-height: 1.5; color: #9aa1ad; text-align: center; }
+
+  /* --- geniş ekran düzeni: solda tanıtım, sağda kart --- */
+  body {
+    display: grid;
+    place-items: center;
+    padding: 30px 18px calc(30px + env(safe-area-inset-bottom));
+    background:
+      radial-gradient(900px 520px at 10% -12%, rgba(234, 88, 12, .30), transparent 62%),
+      radial-gradient(720px 480px at 94% 110%, rgba(37, 99, 235, .20), transparent 58%),
+      linear-gradient(160deg, #1c1f26 0%, #262b35 52%, #1a1d23 100%);
+  }
+  .sayfa { width: 100%; max-width: 950px; display: grid; gap: 34px; align-items: center; }
+  @media (min-width: 900px) {
+    .sayfa { grid-template-columns: minmax(0, 1fr) 396px; gap: 56px; }
+    body { padding: 40px 32px; }
+  }
+  .kahraman { display: none; color: #eef1f6; }
+  @media (min-width: 900px) { .kahraman { display: block; } }
+  .kahraman .marka { margin-bottom: 26px; }
+  .kahraman h2 {
+    margin: 0 0 22px;
+    font-size: 30px;
+    line-height: 1.24;
+    letter-spacing: -.7px;
+    font-weight: 700;
+  }
+  .kahraman h2 em { font-style: normal; color: #fdba74; }
+  .ozellikler { list-style: none; margin: 0; padding: 0; display: grid; gap: 13px; }
+  .ozellikler li {
+    display: flex;
+    gap: 11px;
+    align-items: flex-start;
+    font-size: 13.5px;
+    line-height: 1.5;
+    color: #c9d0db;
+  }
+  .ozellikler li b { color: #f1f4f9; font-weight: 650; }
+  .ozellikler svg { flex: none; margin-top: 1px; color: #fb923c; }
+  .imza { margin: 32px 0 0; font-size: 11.5px; color: #7d8794; letter-spacing: .1px; }
+
+  /* --- kart --- */
+  .kart {
+    animation: kart-gir .45s ease both;
+    box-shadow: 0 32px 70px -34px rgba(0, 0, 0, .78), 0 1px 0 rgba(255, 255, 255, .5) inset;
+  }
+  @media (min-width: 900px) { .kart .marka { display: none; } }
+  @keyframes kart-gir {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: none; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .kart, .hata { animation: none !important; }
+  }
+  h1 { font-size: 20px; }
+
+  /* --- şifre alanı: göster / gizle --- */
+  .sifre-kutu { position: relative; }
+  .sifre-kutu input { padding-right: 46px; }
+  .goz {
+    position: absolute;
+    top: 50%;
+    right: 7px;
+    transform: translateY(-50%);
+    width: 32px;
+    height: 32px;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    place-items: center;
+    color: #6b7280;
+    background: transparent;
+    border: 0;
+    border-radius: 9px;
+    cursor: pointer;
+  }
+  .goz:hover { background: #eef0f4; color: #374151; }
+  .goz:focus-visible { outline: 2px solid #ea580c; outline-offset: 1px; }
+
+  /* --- gönder düğmesi (göz düğmesi etkilenmez) --- */
+  button[type="submit"] {
+    width: 100%;
+    margin-top: 8px;
+    padding: 13px 16px;
+    font: inherit;
+    font-size: 14.5px;
+    font-weight: 700;
+    color: #ffffff;
+    background: linear-gradient(150deg, #f97316, #ea580c);
+    border: 0;
+    border-radius: 12px;
+    cursor: pointer;
+    box-shadow: 0 14px 24px -16px rgba(234, 88, 12, .95);
+    transition: background .18s ease, transform .06s ease, opacity .18s ease;
+  }
+  button[type="submit"]:hover { background: linear-gradient(150deg, #ea580c, #c2410c); }
+  button[type="submit"]:active { transform: translateY(1px); }
+  button[type="submit"][disabled] { opacity: .72; cursor: progress; }
+
+  .hata { animation: hata-sarsinti .3s ease; }
+  @keyframes hata-sarsinti {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-4px); }
+    75% { transform: translateX(4px); }
+  }
 """
 
 _ISARET = """
@@ -298,6 +402,49 @@ _ISARET = """
 """
 
 
+_JS = """
+(function () {
+  var kutu = document.querySelector(".sifre-kutu");
+  if (kutu) {
+    var girdi = kutu.querySelector("input");
+    var goz = kutu.querySelector(".goz");
+    if (girdi && goz) {
+      goz.addEventListener("click", function () {
+        var acik = girdi.type === "text";
+        girdi.type = acik ? "password" : "text";
+        goz.setAttribute("aria-label", acik ? "Şifreyi göster" : "Şifreyi gizle");
+        girdi.focus();
+      });
+    }
+  }
+  var form = document.querySelector("form");
+  if (form) {
+    form.addEventListener("submit", function () {
+      var dugme = form.querySelector('button[type="submit"]');
+      if (dugme) {
+        dugme.disabled = true;
+        dugme.textContent = "Gönderiliyor…";
+      }
+    });
+  }
+})();
+"""
+
+_ONAY = """
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16"
+               fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"
+               stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+"""
+
+_GIZLE = """
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18"
+               fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"
+               stroke-linejoin="round" aria-hidden="true">
+            <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>
+          </svg>
+"""
+
+
 def _sayfa(baslik: str, icerik: str, hata: str = "") -> str:
     """Giriş ve kurulum ekranlarının ortak iskeleti."""
     hata_kutusu = f'<p class="hata">{html.escape(hata)}</p>' if hata else ""
@@ -306,22 +453,44 @@ def _sayfa(baslik: str, icerik: str, hata: str = "") -> str:
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#23262e">
+<meta name="theme-color" content="#1c1f26">
 <meta name="robots" content="noindex">
 <title>{html.escape(baslik)} · YKS Pusula</title>
 <style>{_CSS}</style>
 </head>
 <body>
-  <main class="kart">
-    <div class="marka">{_ISARET}
-      <div>
-        <b>YKS Pusula</b>
-        <small>Eğitim koçluğu platformu</small>
+  <div class="sayfa">
+    <section class="kahraman">
+      <div class="marka">{_ISARET}
+        <div>
+          <b>YKS Pusula</b>
+          <small>Eğitim koçluğu platformu</small>
+        </div>
       </div>
-    </div>
-    {icerik}
-    {hata_kutusu}
-  </main>
+      <h2>Hedefe giden yol,<br><em>her gün atılan</em> küçük adımlarla kurulur.</h2>
+      <ul class="ozellikler">
+        <li>{_ONAY}<span><b>Akıllı günlük plan:</b> hedef sıralamana göre ders ağırlıkları,
+          aralıklı tekrar ve açık konu önceliği.</span></li>
+        <li>{_ONAY}<span><b>Deneme analizi + yapay zekâ koçu:</b> net gelişimi, zayıf konu
+          çıkarımı ve kişisel yorum.</span></li>
+        <li>{_ONAY}<span><b>Veli ve öğrenci takibi:</b> sınıf düzeyine göre kurgulanan
+          program, veliye özel görünüm.</span></li>
+      </ul>
+      <p class="imza">A-KEY Yazılım · YKS Pusula v3.1</p>
+    </section>
+
+    <main class="kart">
+      <div class="marka">{_ISARET}
+        <div>
+          <b>YKS Pusula</b>
+          <small>Eğitim koçluğu platformu</small>
+        </div>
+      </div>
+      {icerik}
+      {hata_kutusu}
+    </main>
+  </div>
+  <script>{_JS}</script>
 </body>
 </html>
 """
@@ -341,8 +510,11 @@ def giris_sayfasi(hata: str = "", hedef: str = "/") -> str:
       </div>
       <div class="alan">
         <label for="sifre">Şifre</label>
-        <input id="sifre" name="sifre" type="password" autocomplete="current-password"
-               required placeholder="&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;">
+        <div class="sifre-kutu">
+          <input id="sifre" name="sifre" type="password" autocomplete="current-password"
+                 required placeholder="&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;">
+          <button type="button" class="goz" aria-label="Şifreyi göster">{_GIZLE}</button>
+        </div>
       </div>
       <button type="submit">Giriş yap</button>
     </form>

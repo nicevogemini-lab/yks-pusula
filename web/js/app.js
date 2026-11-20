@@ -26,7 +26,7 @@ const kok = document.getElementById("kok");
 const durum = { meta: null, kullanici: null, profiller: [], profil: null, sayfa: "panel", icerik: null };
 
 // Arayüz sürümü: kullanıcı yeni sürümün yüklendiğini menünün altından görür
-const SURUM = "v3.0";
+const SURUM = "v3.1";
 
 // ---------------------------------------------------------------- yardımcı
 function kalanGun(isoTarih) {

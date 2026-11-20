@@ -5,8 +5,9 @@ platformu. Öğrencinin alanı (Sayısal / Eşit Ağırlık / Sözel), sınıf d
 mezun) ve hedefi doğrultusunda günlük çalışma planı üretir; deneme sonuçlarını
 analiz eder; yapay zekâ koçuyla kişisel rehberlik verir.
 
-> Sürüm 0.1.0 — iskelet. Çalışır durumda: müfredat haritası, plan üretimi, deneme
-> analizi, koç sohbeti, ayarlar ve yedekleme.
+> Sürüm 3.1 — canlıda çalışıyor (Render + Neon PostgreSQL). Müfredat haritası,
+> plan üretimi, deneme analizi, koç sohbeti, yönetici için müfredat düzenleme,
+> kullanıcı yönetimi ve bulut yedekleme.
 
 ## Neden bu kurgu
 
@@ -217,6 +218,23 @@ panelden girilen anahtar geçerlidir ve `.env` değerini ezer.
 - Panelden indirme: Ayarlar > "Veritabanını indir" (`/api/yedek`)
 - Yolu değiştirmek için `.env` içinde `PUSULA_DB` (mutlak yol da olabilir)
 
+### Bulut (Neon) yedeği
+
+Canlı kurulumda veri Neon PostgreSQL'de tutulur. `pg_dump` kurulu olmayan
+makinelerde de çalışan JSON yedeği vardır:
+
+```powershell
+.\.venv\Scripts\python.exe betikler\bulut_yedek.py                    # yedek al
+.\.venv\Scripts\python.exe betikler\bulut_yedek.py --liste             # yedekleri listele
+.\.venv\Scripts\python.exe betikler\bulut_geri_yukle.py veri\yedekler\bulut-20261120-181822.json
+```
+
+- Yedekler `veri/yedekler/` altında tutulur; son 14 dosya saklanır (`--sakla` ile değişir).
+- Zamanlanmış görev: günde iki kez (13:00 ve 21:30)
+  `powershell -ExecutionPolicy Bypass -File betikler\bulut_yedek_zamanla.ps1`
+- Geri yükleme önce **denetim** yapar (her tablonun satır sayısını karşılaştırır);
+  yazmak için `--yaz --evet`, bağlantı için `.env.bulut` içindeki `PUSULA_DATABASE_URL` gerekir.
+
 ### Ayrı bir klasöre taşıma
 
 ```powershell
@@ -256,7 +274,8 @@ YKS-Pusula/
 ├── web/                      # arayüz (derleme adımı yok, saf ES modülleri)
 │   ├── index.html, css/app.css
 │   └── js/{api,ui,app}.js, js/pages/*
-├── tests/test_api.py         # 11 uçtan uca API testi
+├── betikler/                 # yayın (Render), bulut yedeği ve geri yükleme
+├── tests/                    # uçtan uca API testleri
 └── veri/pusula.db            # veritabanı (otomatik oluşur)
 ```
 
