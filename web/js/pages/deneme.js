@@ -1,21 +1,21 @@
-// deneme.js — deneme sınavı girişi ve analizi
+// deneme.js — deneme sınavı girişi ve kayıtlı denemeler
 import { api } from "../api.js";
-import { h, ikon, rozet, kisaTarih, tarihTr, dakikaMetni, bosDurum, bildir, metinBalonu } from "../ui.js";
-import { hedefKarti, sayiMetni } from "../hedef-karti.js";
+import { h, ikon, rozet, tarihTr, bosDurum, bildir } from "../ui.js";
+import { sayiMetni } from "../hedef-karti.js";
 
-export const baslik = "Deneme Analizi";
-export const alt = "Net hesabı, konu ağırlığı, yapay zekâ değerlendirmesi ve deneme takvimi";
+export const baslik = "Denemeler";
+export const alt = "Deneme gir, kayıtlı denemeleri ve konu kırılımını yönet";
 
-let uygulama = null;
 let dersler = [];
 let tur = "TYT";
 let girisler = {};
+// ders_kod -> { konu_id: {dogru, yanlis, bos} }: konu bazlı deneme girişi
+let konuGirisleri = {};
+// ders_kod -> satırdaki girdi ve net hücreleri (konu toplamı otomatik yazılır)
+let satirGirdileri = {};
 let tabloKabi = null;
 let toplamKabi = null;
-let degerlendirme = null;
-let degerlendirmeKabi = null;
-let aiAktif = false;
-// ders_kod -> konular: denemede yanlış konu işaretlemek için
+// ders_kod -> konular: denemede konu kırılımı girmek için
 let konuHaritasi = {};
 
 function bugunIso() {
@@ -28,17 +28,11 @@ function netHesapla(g) {
 }
 
 export async function ciz(kap, durum) {
-  uygulama = durum;
-  const [mufredat, denemeler, hedef, analiz, aiDurum, kayit] = await Promise.all([
+  const [mufredat, denemeler, hedef] = await Promise.all([
     api.get(`/api/mufredat/${durum.profil.id}`),
     api.get(`/api/denemeler/${durum.profil.id}`),
     api.get(`/api/hedef/${durum.profil.id}`),
-    api.get(`/api/analiz/${durum.profil.id}`),
-    api.get("/api/ai/durum"),
-    api.get(`/api/analiz/${durum.profil.id}/degerlendirme`),
   ]);
-  degerlendirme = kayit?.var ? kayit : null;
-  aiAktif = Boolean(aiDurum?.aktif);
   dersler = mufredat.dersler.map((d) => ({
     kod: d.kod,
     ad: d.ad,
@@ -51,334 +45,15 @@ export async function ciz(kap, durum) {
     konuHaritasi[d.kod] = (d.konular || []).map((k) => ({ id: k.id, ad: k.ad }));
   });
   girisler = {};
+  konuGirisleri = {};
   dersler.forEach((d) => { girisler[d.kod] = { dogru: 0, yanlis: 0, bos: 0 }; });
   tur = "TYT";
 
   kap.replaceChildren(
-    hedefKarti(hedef, {
-      kompakt: true,
-      baslik: "Denemelerin hedefe göre neresinde?",
-      alt: "Her deneme, hedef sıralamanın gerektirdiği TYT/AYT netiyle karşılaştırılır.",
-    }),
-    konuKarti(analiz),
-    degerlendirmeKarti(),
     formKarti(durum),
     listeKarti(denemeler, durum, hedef)
   );
   tabloCiz();
-}
-
-// ------------------------------------------------- konu ağırlığı analizi
-function konuKarti(analiz) {
-  const kart = h("section", { class: "kart" });
-  kart.append(
-    h(
-      "div",
-      { class: "kart-baslik", style: { alignItems: "center" } },
-      h(
-        "div",
-        {},
-        h("h2", { text: "Konu ağırlığı analizi" }),
-        h("p", { text: "Doğru/yanlış sayıların, konuların gerçek YKS'deki beklenen soru sayısıyla birleşir." })
-      ),
-      h("a", { class: "dugme ikincil kucuk", href: "#/plan" }, "Programa yansıt")
-    )
-  );
-
-  if (!analiz.deneme_sayisi) {
-    kart.append(
-      bosDurum(
-        "Henüz deneme yok",
-        "İlk denemeni kaydettiğinde ders bazlı doğru/yanlış, konu ağırlıklarıyla çarpılıp burada sıralanır."
-      )
-    );
-    return kart;
-  }
-
-  const dersler = analiz.dersler.filter((d) => d.deneme_sayisi);
-  const dersTablo = h("table", { class: "sonuc-tablo" });
-  dersTablo.append(
-    h("thead", {},
-      h("tr", {},
-        h("th", { text: "Ders" }),
-        h("th", { text: "D/Y/B" }),
-        h("th", { text: "Net" }),
-        h("th", { text: "Başarı" }),
-        h("th", { text: "Seviye" }))),
-    h("tbody", {},
-      dersler.map((d) =>
-        h("tr", {},
-          h("td", {},
-            h("span", { style: { display: "inline-flex", alignItems: "center", gap: "7px" } },
-              h("span", { class: "nokta", style: { background: d.renk } }),
-              d.ad),
-            h("small", { text: d.sinav, style: { display: "block", color: "#6b7280", marginTop: "2px" } })),
-          h("td", { text: `${d.dogru}/${d.yanlis}/${d.bos}`, style: { fontSize: "12.5px", color: "#6b7280" } }),
-          h("td", { class: "net-hucre", text: String(d.net) }),
-          h("td", { text: d.basari_yuzde == null ? "—" : `${d.basari_yuzde}%` }),
-          h("td", {}, rozet(d.seviye, d.seviye === "zayıf" ? "uyari" : d.seviye === "iyi" ? "basari" : ""))))
-    )
-  );
-
-  const konular = analiz.en_cok_kazanc;
-  const konuTablo = h("table", { class: "sonuc-tablo" });
-  konuTablo.append(
-    h("thead", {},
-      h("tr", {},
-        h("th", { text: "Konu" }),
-        h("th", { text: "YKS'de beklenen" }),
-        h("th", { text: "Başarı" }),
-        h("th", { text: "Etkin puan" }))),
-    h("tbody", {},
-      konular.map((k) =>
-        h("tr", {},
-          h("td", {},
-            h("span", { style: { display: "inline-flex", alignItems: "center", gap: "7px" } },
-              h("span", { class: "nokta", style: { background: k.renk } }),
-              k.ad),
-            h("small", { text: `${k.ders_ad} · ${k.kaynak} verisi`, style: { display: "block", color: "#6b7280", marginTop: "2px" } })),
-          h("td", { text: `${k.beklenen_soru.toFixed(1)} soru` }),
-          h("td", { text: `${k.basari_yuzde}%` }),
-          h("td", { class: "net-hucre", text: String(k.etkin_puan) })))
-    )
-  );
-
-  kart.append(
-    h("div", { style: { display: "grid", gap: "18px" } },
-      h("div", {},
-        h("h3", { text: "Denemelerde ders bazlı doğru/yanlış", style: { margin: "4px 0 8px", fontSize: "13.5px" } }),
-        h("div", { style: { overflowX: "auto" } }, dersTablo)),
-      h("div", {},
-        h("h3", { text: "En çok net kazandıracak konular", style: { margin: "0 0 8px", fontSize: "13.5px" } }),
-        h("div", { style: { overflowX: "auto" } }, konuTablo),
-        h("p", { class: "ipucu", style: { marginTop: "10px" },
-          text: "Etkin puan = beklenen soru sayısı × (1 − başarı oranı). Sıralama; hedef sıralamana göre ders payı ile ağırlıklandırılır. Günlük, haftalık ve aylık programlar bu sıradan kurulur." })),
-      h("div", {},
-        h("h3", { text: "Konu bazlı açıklar", style: { margin: "0 0 8px", fontSize: "13.5px" } }),
-        konuAcikListesi(analiz),
-        h("p", { class: "ipucu", style: { marginTop: "10px" },
-          text: "Kanıt; denemede işaretlediğin yanlış konulardan ve çalışma günlüğünden gelir. Aşağıdaki deneme kartlarında 'Yanlış konuları işaretle' ile açığı konu adıyla tespit et; günlük program bu konuları öne alır. Her gün matematik ve paragraf soruları programda sabittir." }))
-    )
-  );
-
-  return kart;
-}
-
-function konuAcikListesi(analiz) {
-  const gruplar = analiz.konu_aciklari || [];
-  if (!gruplar.length) {
-    return bosDurum(
-      "Henüz konu bazlı kanıt yok",
-      "Deneme kartlarındaki 'Yanlış konuları işaretle' bölümünden yanlış yaptığın konuları seç; derslerin içindeki açık konular burada listelenir."
-    );
-  }
-
-  return h("div", { class: "acik-konular" },
-    gruplar.map((grup) =>
-      h("div", { class: "acik-konu-grup" },
-        h("div", { class: "acik-konu-baslik" },
-          h("span", { class: "nokta", style: { background: grup.renk } }),
-          h("b", { text: grup.ders }),
-          rozet(`${grup.acik_sayisi} açık konu`, "uyari")),
-        h("div", { class: "konu-cipleri" },
-          grup.konular.map((k) =>
-            h("span", { class: "rozet", title: `${k.kaynak} verisi` },
-              `${k.konu} · %${k.basari_yuzde}`,
-              k.deneme_yanlis
-                ? h("b", { text: `${k.deneme_yanlis}Y`, style: { color: "#a01b1b" } })
-                : null)))))
-  );
-}
-
-// ------------------------------------------------- yapay zekâ değerlendirmesi
-const SIKLIK_ETIKET = { 7: "Haftada 1 deneme", 3: "3 günde 1 deneme" };
-let degerlendirDugmesi = null;
-
-function degerlendirDugmeYaz(metin) {
-  if (!degerlendirDugmesi) return;
-  degerlendirDugmesi.replaceChildren(ikon("sohbet", 16), metin);
-}
-
-function degerlendirmeKarti() {
-  const kart = h("section", { class: "kart" });
-  degerlendirDugmesi = h("button", { class: "dugme", type: "button" });
-  degerlendirDugmeYaz(degerlendirme ? "Yeniden değerlendir" : "Değerlendir");
-
-  kart.append(
-    h("div", { class: "kart-baslik", style: { alignItems: "center" } },
-      h("div", {},
-        h("h2", { text: "Yapay zekâ değerlendirmesi" }),
-        h("p", { text: "Deneme doğru/yanlışları ve konu ağırlıkları yorumlanır; açığı kapatacak deneme sıklığı ve takvimi çıkarılır." })),
-      degerlendirDugmesi)
-  );
-  degerlendirmeKabi = h("div", {});
-  kart.append(degerlendirmeKabi);
-  degerlendirmeCiz();
-
-  degerlendirDugmesi.addEventListener("click", async () => {
-    if (!uygulama) return;
-    degerlendirDugmesi.disabled = true;
-    degerlendirDugmeYaz("Değerlendiriliyor…");
-    try {
-      degerlendirme = await api.post(`/api/analiz/${uygulama.profil.id}/degerlendir`, {});
-      degerlendirmeCiz();
-      bildir(degerlendirme.kaynak === "gemini" ? "Yapay zekâ değerlendirmesi hazır" : "Yerel değerlendirme hazır");
-    } catch (hata) {
-      bildir(hata.message, "hata");
-    } finally {
-      degerlendirDugmesi.disabled = false;
-      degerlendirDugmeYaz("Yeniden değerlendir");
-    }
-  });
-  return kart;
-}
-
-function degerlendirmeCiz() {
-  if (!degerlendirmeKabi) return;
-  if (!degerlendirme) {
-    degerlendirmeKabi.replaceChildren(
-      h("p", { class: "ipucu",
-        text: aiAktif
-          ? "Gemini anahtarı hazır: sonuçlar ve konu analizi yapay zekâ ile yorumlanacak."
-          : "Yapay zekâ anahtarı yok; değerlendirme yerel analizle üretilir. Ayarlar > Yapay Zekâ bölümünden anahtar ekleyebilirsin." })
-    );
-    return;
-  }
-
-  const takvim = degerlendirme.takvim;
-  const meta = h("div", { style: { display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap", marginBottom: "10px" } },
-    rozet(degerlendirme.kaynak === "gemini" ? `Gemini · ${degerlendirme.model}` : "Yerel analiz",
-      degerlendirme.kaynak === "gemini" ? "basari" : ""),
-    h("span", { class: "ipucu", text: `${tarihTr(degerlendirme.olusturma)} tarihli` }),
-    h("span", { class: "ipucu", text: `${degerlendirme.deneme_sayisi} deneme · ${degerlendirme.acik_net} net açık · ${degerlendirme.acik_konu_sayisi ?? 0} açık konu` }));
-
-  const parcalar = [meta];
-  if (degerlendirme.not) {
-    parcalar.push(h("p", { class: "ipucu", style: { color: "#a16207", marginBottom: "8px" }, text: degerlendirme.not }));
-  }
-  parcalar.push(metinBalonu(degerlendirme.metin));
-
-  parcalar.push(
-    h("div", { style: { display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap", margin: "16px 0 4px" } },
-      h("b", { text: "Deneme sıklığı:", style: { fontSize: "13px" } }),
-      h("div", { class: "plan-sekmeler", style: { margin: "0" } },
-        [7, 3].map((gun) =>
-          h("button", {
-            class: `plan-sekme${takvim.siklik === gun ? " aktif" : ""}`,
-            type: "button",
-            "aria-selected": takvim.siklik === gun ? "true" : "false",
-            onclick: () => siklikSec(gun),
-          }, SIKLIK_ETIKET[gun])))),
-    h("p", { class: "ipucu", style: { margin: "6px 0 14px" }, text: `Öneri: ${degerlendirme.gerekce}` })
-  );
-
-  const tablo = h("table", { class: "sonuc-tablo" });
-  tablo.append(
-    h("thead", {},
-      h("tr", {},
-        ["Tarih", "Sınav", "Süre", "Hedef net", "Odak konular"].map((t) => h("th", { text: t })))),
-    h("tbody", {},
-      takvim.denemeler.map((d) =>
-        h("tr", {},
-          h("td", { text: d.tarih_tr }),
-          h("td", { text: d.ad }),
-          h("td", { text: `${d.sure_dk} dk` }),
-          h("td", { class: "net-hucre", text: String(d.hedef_net) }),
-          h("td", { text: d.odak.length ? d.odak.map((k) => k.konu).join(", ") : "—",
-            style: { fontSize: "12.5px", color: "#6b7280" } }))))
-  );
-
-  const yaz = h("button", { class: "dugme ikincil", type: "button" }, ikon("takvim", 16), "Takvimi plana yaz");
-  yaz.addEventListener("click", () => takvimiYaz(yaz));
-
-  parcalar.push(
-    h("div", { style: { display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap", marginBottom: "8px" } },
-      h("h3", { text: "Deneme takvimi", style: { margin: "0", fontSize: "13.5px" } }),
-      h("span", { class: "ipucu",
-        text: `${takvim.adet} deneme · ${tarihTr(takvim.denemeler[0]?.tarih)} – ${tarihTr(takvim.bitis)} · ${dakikaMetni(takvim.toplam_dk)}` })),
-    h("div", { style: { overflowX: "auto" } }, tablo),
-    h("div", { style: { display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap", marginTop: "12px" } },
-      yaz,
-      h("span", { class: "ipucu", text: "Sınav günlerinde bekleyen konu blokları kaldırılır; 40 dk analiz bloğu eklenir." }))
-  );
-
-  const program = degerlendirme.program;
-  if (program?.gunler?.length) {
-    const pTablo = h("table", { class: "sonuc-tablo" });
-    pTablo.append(
-      h("thead", {},
-        h("tr", {},
-          ["Gün", "Tarih", "Matematik", "Paragraf", "Odak konular"].map((t) => h("th", { text: t })))),
-      h("tbody", {},
-        program.gunler.map((g) =>
-          h("tr", {},
-            h("td", { text: g.gun_adi }),
-            h("td", { text: g.tarih_tr }),
-            h("td", { text: g.matematik ? `${g.matematik.soru} soru · ${g.matematik.konu}` : "—" }),
-            h("td", { text: `${g.paragraf.soru} soru` }),
-            h("td", { text: g.odak.length ? g.odak.map((k) => k.konu).join(", ") : "—",
-              style: { fontSize: "12.5px", color: "#6b7280" } }))
-        )
-    ));
-
-    const programYaz = h("button", { class: "dugme ikincil", type: "button" }, ikon("takvim", 16), "Programı plana yaz");
-    programYaz.addEventListener("click", () => programiYaz(programYaz));
-
-    parcalar.push(
-      h("div", { style: { marginTop: "20px" } },
-        h("div", { style: { display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap", marginBottom: "8px" } },
-          h("h3", { text: "Haftalık program (her gün matematik + paragraf)", style: { margin: "0", fontSize: "13.5px" } }),
-          h("span", { class: "ipucu", text: program.kural })),
-        h("div", { style: { overflowX: "auto" } }, pTablo),
-        h("div", { style: { display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap", marginTop: "12px" } },
-          programYaz,
-          h("span", { class: "ipucu", text: "Planı bugünden itibaren 7 gün için tazeler; aynı sıra günlük planda da kullanılır." })))
-    );
-  }
-
-  degerlendirmeKabi.replaceChildren(...parcalar);
-}
-
-async function programiYaz(dugme) {
-  if (!uygulama) return;
-  dugme.disabled = true;
-  dugme.textContent = "Yazılıyor…";
-  try {
-    const yanit = await api.post(`/api/plan/${uygulama.profil.id}/uret?gun=7`, {});
-    bildir(`${yanit.eklenen} madde plana yazıldı`);
-    await uygulama.yenile();
-  } catch (hata) {
-    bildir(hata.message, "hata");
-    dugme.disabled = false;
-    dugme.replaceChildren(ikon("takvim", 16), "Programı plana yaz");
-  }
-}
-
-async function siklikSec(gun) {
-  if (!uygulama || !degerlendirme) return;
-  try {
-    const takvim = await api.get(`/api/deneme-takvimi/${uygulama.profil.id}?siklik=${gun}&hafta=4`);
-    degerlendirme = { ...degerlendirme, siklik: gun, takvim };
-    degerlendirmeCiz();
-  } catch (hata) {
-    bildir(hata.message, "hata");
-  }
-}
-
-async function takvimiYaz(dugme) {
-  if (!uygulama || !degerlendirme) return;
-  const gun = degerlendirme.takvim.siklik;
-  dugme.disabled = true;
-  dugme.textContent = "Yazılıyor…";
-  try {
-    const yanit = await api.post(`/api/plan/${uygulama.profil.id}/deneme-takvimi?siklik=${gun}&hafta=4`, {});
-    bildir(`${yanit.eklenen} deneme/analiz bloğu plana yazıldı`);
-    await uygulama.yenile();
-  } catch (hata) {
-    bildir(hata.message, "hata");
-    dugme.disabled = false;
-    dugme.replaceChildren(ikon("takvim", 16), "Takvimi plana yaz");
-  }
 }
 
 // ------------------------------------------------------------------- form
@@ -390,6 +65,7 @@ function formKarti(durum) {
       onchange: (o) => {
         tur = o.target.value;
         girisler = {};
+        konuGirisleri = {};
         dersler.forEach((d) => { girisler[d.kod] = { dogru: 0, yanlis: 0, bos: 0 }; });
         tabloCiz();
       },
@@ -409,8 +85,9 @@ function formKarti(durum) {
     const sonuclar = Object.entries(girisler)
       .filter(([, g]) => g.dogru + g.yanlis + g.bos > 0)
       .map(([ders_kod, g]) => ({ ders_kod, ...g }));
+    const konular = doluKonular();
 
-    if (!sonuclar.length) {
+    if (!sonuclar.length && !konular.length) {
       bildir("En az bir ders için doğru/yanlış/boş gir.", "hata");
       return;
     }
@@ -424,8 +101,13 @@ function formKarti(durum) {
         tarih: tarihGirdi.value || null,
         sure_dk: Number(sureGirdi.value) || 0,
         sonuclar,
+        konular,
       });
-      bildir(`Kaydedildi · tahmini TYT puanı ${yanit.ozet.puan.tyt}`);
+      bildir(
+        konular.length
+          ? `Kaydedildi · ${konular.length} konu · TYT puanı ${yanit.ozet.puan.tyt}`
+          : `Kaydedildi · tahmini TYT puanı ${yanit.ozet.puan.tyt}`
+      );
       await durum.yenile();
     } catch (hata) {
       bildir(hata.message, "hata");
@@ -437,10 +119,11 @@ function formKarti(durum) {
   return h(
     "section",
     { class: "kart" },
-    h("div", { class: "kart-baslik" },
+    h("div", { class: "kart-baslik", style: { alignItems: "center" } },
       h("div", {},
         h("h2", { text: "Yeni deneme gir" }),
-        h("p", { text: "Net = doğru − yanlış/4. Boş sorular neti değiştirmez." }))),
+        h("p", { text: "Net = doğru − yanlış/4. Boş sorular neti değiştirmez." })),
+      h("a", { class: "dugme ikincil kucuk", href: "#/analiz" }, "Analizi aç")),
     h(
       "div",
       { class: "deneme-form" },
@@ -458,6 +141,7 @@ function formKarti(durum) {
             type: "button",
             onclick: () => {
               dersler.forEach((d) => { girisler[d.kod] = { dogru: 0, yanlis: 0, bos: 0 }; });
+              konuGirisleri = {};
               tabloCiz();
             },
           }, "Temizle"),
@@ -469,6 +153,7 @@ function formKarti(durum) {
 function tabloCiz() {
   if (!tabloKabi) return;
   const secili = dersler.filter((d) => d.sinav === tur);
+  satirGirdileri = {};
   const tablo = h("table", { class: "sonuc-tablo" });
   tablo.append(
     h("thead", {},
@@ -478,7 +163,8 @@ function tabloCiz() {
         h("th", { text: "Doğru" }),
         h("th", { text: "Yanlış" }),
         h("th", { text: "Boş" }),
-        h("th", { text: "Net" })))
+        h("th", { text: "Net" }),
+        h("th", { text: "Konular" })))
   );
 
   const govde = h("tbody");
@@ -499,6 +185,38 @@ function tabloCiz() {
         },
       });
 
+    const satirGirdisi = {
+      dogru: alan("dogru"),
+      yanlis: alan("yanlis"),
+      bos: alan("bos"),
+      net: netHucre,
+    };
+    satirGirdileri[ders.kod] = satirGirdisi;
+
+    // Konu paneli: dersin konuları doğru/yanlış/boş olarak girilir,
+    // ders satırı toplamı otomatik hesaplanır (elle de değiştirilebilir).
+    const panel = h("tr", { class: "konu-satiri", style: { display: "none" } });
+    const panelHucre = h("td", { colspan: "7" });
+    panel.append(panelHucre);
+    const konuDugme = h(
+      "button",
+      { class: "dugme sessiz kucuk", type: "button", title: "Konu bazlı giriş" },
+      "Konular"
+    );
+    let dolu = false;
+    konuDugme.addEventListener("click", () => {
+      dolu = !dolu;
+      if (dolu && !panelHucre.hasChildNodes()) {
+        panelHucre.append(
+          konuPaneliCiz(ders.kod, konuGirisleri, () => {
+            konuToplaminiUygula(ders.kod);
+            netHucre.textContent = String(netHesapla(g));
+          })
+        );
+      }
+      panel.style.display = dolu ? "" : "none";
+    });
+
     govde.append(
       h("tr", {},
         h("td", {},
@@ -506,16 +224,102 @@ function tabloCiz() {
             h("span", { class: "nokta", style: { background: ders.renk } }),
             ders.ad)),
         h("td", { text: String(ders.soru_sayisi || "-"), style: { color: "#6b7280", fontSize: "12px" } }),
-        h("td", {}, alan("dogru")),
-        h("td", {}, alan("yanlis")),
-        h("td", {}, alan("bos")),
-        netHucre)
+        h("td", {}, satirGirdisi.dogru),
+        h("td", {}, satirGirdisi.yanlis),
+        h("td", {}, satirGirdisi.bos),
+        netHucre,
+        h("td", {}, konuDugme)),
+      panel
     );
   });
 
   tablo.append(govde);
   tabloKabi.replaceChildren(tablo);
   toplamlariCiz();
+}
+
+/** Bir dersin konularını doğru/yanlış/boş girdileriyle listeler */
+function konuPaneliCiz(dersKod, depo, degisti) {
+  const konular = konuHaritasi[dersKod] || [];
+  if (!konular.length) return h("p", { class: "ipucu", text: "Bu ders için tanımlı konu yok." });
+  depo[dersKod] = depo[dersKod] || {};
+  const kayitlar = depo[dersKod];
+
+  const tablo = h("table", { class: "sonuc-tablo", style: { margin: "8px 0" } });
+  tablo.append(
+    h("thead", {},
+      h("tr", {},
+        ["Konu", "Doğru", "Yanlış", "Boş"].map((t) => h("th", { text: t }))))
+  );
+
+  const govde = h("tbody");
+  konular.forEach((konu) => {
+    const kayit = kayitlar[konu.id] || (kayitlar[konu.id] = { dogru: 0, yanlis: 0, bos: 0 });
+    const alan = (ad) =>
+      h("input", {
+        type: "number",
+        min: "0",
+        value: String(kayit[ad]),
+        oninput: (o) => {
+          kayit[ad] = Math.max(0, Number(o.target.value) || 0);
+          degisti();
+        },
+      });
+    govde.append(
+      h("tr", {},
+        h("td", { text: konu.ad, style: { fontSize: "12.5px" } }),
+        h("td", {}, alan("dogru")),
+        h("td", {}, alan("yanlis")),
+        h("td", {}, alan("bos")))
+    );
+  });
+  tablo.append(govde);
+  return h(
+    "div",
+    {},
+    h("p", { class: "ipucu", style: { margin: "6px 0" },
+      text: "Konu toplamı ders satırına yazılır; emin olmadığın konuyu boş bırak." }),
+    h("div", { style: { maxHeight: "320px", overflowY: "auto" } }, tablo)
+  );
+}
+
+/** Konu girdilerinin toplamını ders satırına yazar */
+function konuToplaminiUygula(dersKod) {
+  const kayitlar = konuGirisleri[dersKod] || {};
+  const toplam = { dogru: 0, yanlis: 0, bos: 0 };
+  Object.values(kayitlar).forEach((k) => {
+    toplam.dogru += k.dogru;
+    toplam.yanlis += k.yanlis;
+    toplam.bos += k.bos;
+  });
+  if (toplam.dogru + toplam.yanlis + toplam.bos === 0) return;
+
+  const g = girisler[dersKod];
+  if (!g) return;
+  g.dogru = toplam.dogru;
+  g.yanlis = toplam.yanlis;
+  g.bos = toplam.bos;
+  const satir = satirGirdileri[dersKod];
+  if (satir) {
+    satir.dogru.value = String(g.dogru);
+    satir.yanlis.value = String(g.yanlis);
+    satir.bos.value = String(g.bos);
+    satir.net.textContent = String(netHesapla(g));
+  }
+  toplamlariCiz();
+}
+
+/** Girilmiş konu satırlarını API gövdesine çevirir */
+function doluKonular() {
+  const satirlar = [];
+  Object.entries(konuGirisleri).forEach(([, kayitlar]) => {
+    Object.entries(kayitlar).forEach(([konu_id, k]) => {
+      if (k.dogru + k.yanlis + k.bos > 0) {
+        satirlar.push({ konu_id: Number(konu_id), dogru: k.dogru, yanlis: k.yanlis, bos: k.bos });
+      }
+    });
+  });
+  return satirlar;
 }
 
 function toplamlariCiz() {
@@ -552,7 +356,8 @@ function listeKarti(denemeler, durum, hedef) {
     h("div", { class: "kart-baslik" },
       h("div", {},
         h("h2", { text: "Kayıtlı denemeler" }),
-        h("p", { text: "Net gelişimi, ders kırılımı ve tahmini puan" })))
+        h("p", { text: "Net gelişimi, ders kırılımı ve tahmini puan" })),
+      h("a", { class: "dugme ikincil kucuk", href: "#/analiz" }, "Analiz"))
   );
 
   if (!denemeler.length) {
@@ -628,59 +433,55 @@ function listeKarti(denemeler, durum, hedef) {
 }
 
 function konuSecimPaneli(deneme, durum) {
-  const secilebilir = (deneme.satirlar || []).filter(
-    (s) => s.yanlis > 0 && (konuHaritasi[s.ders_kod] || []).length
-  );
-  if (!secilebilir.length) return null;
+  // Kayıtlı denemenin konu kırılımı: konu bazlı doğru/yanlış/boş düzenlenebilir
+  const dersli = (deneme.satirlar || []).filter((s) => (konuHaritasi[s.ders_kod] || []).length);
+  if (!dersli.length) return null;
 
-  const secili = new Set((deneme.konular || []).map((k) => k.konu_id));
-  const govde = h("div", { style: { display: "grid", gap: "12px", marginTop: "12px" } });
+  const depo = {};
+  (deneme.konular || []).forEach((k) => {
+    const kayitlar = depo[k.ders_kod] || (depo[k.ders_kod] = {});
+    kayitlar[k.konu_id] = { dogru: k.dogru || 0, yanlis: k.yanlis || 0, bos: k.bos || 0 };
+  });
 
-  secilebilir.forEach((satir) => {
+  const govde = h("div", { style: { display: "grid", gap: "14px", marginTop: "12px" } });
+  dersli.forEach((satir) => {
     govde.append(
       h("div", {},
         h("div", { style: { display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" } },
           h("span", { class: "nokta", style: { background: satir.renk } }),
           h("b", { text: satir.ders, style: { fontSize: "12.5px" } }),
-          h("span", { class: "ipucu", text: `${satir.yanlis} yanlış` })),
-        h("div", { class: "konu-cipleri" },
-          konuHaritasi[satir.ders_kod].map((konu) => {
-            const cip = h("button", {
-              class: `konu-cip${secili.has(konu.id) ? " aktif" : ""}`,
-              type: "button",
-              "aria-pressed": secili.has(konu.id) ? "true" : "false",
-              onclick: () => {
-                if (secili.has(konu.id)) secili.delete(konu.id);
-                else secili.add(konu.id);
-                cip.classList.toggle("aktif", secili.has(konu.id));
-                cip.setAttribute("aria-pressed", secili.has(konu.id) ? "true" : "false");
-              },
-            }, konu.ad);
-            return cip;
-          })))
+          h("span", { class: "ipucu", text: `${satir.dogru}D / ${satir.yanlis}Y / ${satir.bos}B` })),
+        konuPaneliCiz(satir.ders_kod, depo, () => {}))
     );
   });
 
-  const kaydet = h("button", { class: "dugme ikincil kucuk", type: "button" }, "Yanlış konuları kaydet");
+  const kaydet = h("button", { class: "dugme ikincil kucuk", type: "button" }, "Konu kırılımını kaydet");
   kaydet.addEventListener("click", async () => {
     kaydet.disabled = true;
     kaydet.textContent = "Kaydediliyor…";
     try {
-      const konular = [...secili].map((konu_id) => ({ konu_id, yanlis: 1 }));
+      const konular = [];
+      Object.entries(depo).forEach(([, kayitlar]) => {
+        Object.entries(kayitlar).forEach(([konu_id, k]) => {
+          if (k.dogru + k.yanlis + k.bos > 0) {
+            konular.push({ konu_id: Number(konu_id), dogru: k.dogru, yanlis: k.yanlis, bos: k.bos });
+          }
+        });
+      });
       const yanit = await api.post(`/api/deneme/${deneme.id}/konular`, { konular });
-      bildir(`${yanit.konu_sayisi} yanlış konu kaydedildi`);
+      bildir(`${yanit.konu_sayisi} konu kaydedildi`);
       await durum.yenile();
     } catch (hata) {
       bildir(hata.message, "hata");
       kaydet.disabled = false;
-      kaydet.textContent = "Yanlış konuları kaydet";
+      kaydet.textContent = "Konu kırılımını kaydet";
     }
   });
 
   return h("details", { class: "konu-secim" },
-    h("summary", { text: `Yanlış konuları işaretle${secili.size ? ` (${secili.size})` : ""}` }),
+    h("summary", { text: `Konu kırılımı (${(deneme.konular || []).length} konu)` }),
     h("p", { class: "ipucu", style: { margin: "10px 0 0" },
-      text: "Yanlış yaptığın konuları seç; konu bazlı analiz ve günlük program buna göre güncellenir. Her gün matematik ve paragraf soruları programda kalır." }),
+      text: "Hangi konudan kaç doğru/yanlış/boş yaptığını gir; konu bazlı analiz ve günlük program buna göre güncellenir." }),
     govde,
     h("div", { style: { marginTop: "12px" } }, kaydet));
 }

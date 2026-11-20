@@ -11,6 +11,10 @@ async function istek(yol, secenekler = {}) {
     location.href = "/giris";
     throw new Error("Oturum gerekli");
   }
+  if (yanit.status === 403) {
+    // Rol kapsamı dışındaki işlem: oturum duruyor, yalnız bu işlem kapalı
+    throw new Error(`Bu işlem için yetkin yok. (${yanit.status})`);
+  }
   if (!yanit.ok) {
     let mesaj = `Sunucu hatası (${yanit.status})`;
     try {

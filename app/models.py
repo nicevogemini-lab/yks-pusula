@@ -9,6 +9,7 @@ from __future__ import annotations
 from datetime import date, datetime
 
 from sqlalchemy import (
+    Boolean,
     Date,
     DateTime,
     ForeignKey,
@@ -27,6 +28,11 @@ ALAN_ETIKET = {
     "sayisal": "Sayısal",
     "ea": "Eşit Ağırlık",
     "sozel": "Sözel",
+}
+ROL_ETIKET = {
+    "yonetici": "Yönetici",
+    "veli": "Veli",
+    "ogrenci": "Öğrenci",
 }
 DURUM_ETIKET = {
     "yok": "Başlanmadı",
@@ -186,11 +192,11 @@ class DenemeSonuc(Base):
 
 
 class DenemeKonu(Base):
-    """Denemede yanlış yapılan konu (konu bazlı deneme analizi).
+    """Denemede konu bazlı doğru/yanlış/boş sayısı.
 
-    Deneme sonuçları ders bazlı tutulur; hangi konudan yanlış geldiği burada
-    işaretlenir. Konu başarısı çalışma günlüğüyle birleşince "açık konu"
-    tablosu ders kırılımından bağımsız olarak çıkar.
+    Deneme sonuçları ders bazlı tutulur; konu kırılımı burada saklanır. Konu
+    başarısı çalışma günlüğüyle birleşince "açık konu" tablosu ders
+    kırılımından bağımsız olarak çıkar.
     """
 
     __tablename__ = "deneme_konulari"
@@ -200,7 +206,9 @@ class DenemeKonu(Base):
     deneme_id: Mapped[int] = mapped_column(ForeignKey("denemeler.id"), index=True)
     konu_id: Mapped[int] = mapped_column(ForeignKey("konular.id"), index=True)
     ders_kod: Mapped[str] = mapped_column(String(16), default="")
-    yanlis: Mapped[int] = mapped_column(Integer, default=1)
+    dogru: Mapped[int] = mapped_column(Integer, default=0)
+    yanlis: Mapped[int] = mapped_column(Integer, default=0)
+    bos: Mapped[int] = mapped_column(Integer, default=0)
 
 
 class Calisma(Base):
@@ -258,3 +266,51 @@ class Ayar(Base):
 
     anahtar: Mapped[str] = mapped_column(String(64), primary_key=True)
     deger: Mapped[str] = mapped_column(Text, default="")
+
+
+class Kullanici(Base):
+    """Panele giriş yapan kişi. Rol; hangi ekranı ve hangi veriyi gördüğünü belirler.
+
+    ``profil_id`` yalnız öğrenci hesabında doludur: öğrenci kendi profiline bağlıdır.
+    Veli ve yönetici hesapları profil tablosuna bu alanla bağlanmaz.
+    """
+
+    __tablename__ = "kullanicilar"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    kullanici_adi: Mapped[str] = mapped_column(String(40), unique=True, index=True)
+    ad_soyad: Mapped[str] = mapped_column(String(80), default="")
+    sifre_hash: Mapped[str] = mapped_column(String(160), default="")
+    rol: Mapped[str] = mapped_column(String(16), default="ogrenci")
+    # Öğrenci hesabının gördüğü profil (veli/yönetici için boş)
+    profil_id: Mapped[int | None] = mapped_column(
+        ForeignKey("profiller.id"), nullable=True, index=True
+    )
+    aktif: Mapped[bool] = mapped_column(Boolean, default=True)
+    olusturma: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+
+    @property
+    def rol_etiketi(self) -> str:
+        return ROL_ETIKET.get(self.rol, self.rol)
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "kullanici_adi": self.kullanici_adi,
+            "ad_soyad": self.ad_soyad,
+            "rol": self.rol,
+            "rol_etiketi": self.rol_etiketi,
+            "profil_id": self.profil_id,
+            "aktif": bool(self.aktif),
+        }
+
+
+class VeliOgrenci(Base):
+    """Veli hesabının gördüğü öğrenciler. Bir veli birden çok öğrenciye bağlanabilir."""
+
+    __tablename__ = "veli_ogrenci"
+    __table_args__ = (UniqueConstraint("veli_id", "profil_id", name="uq_veli_profil"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    veli_id: Mapped[int] = mapped_column(ForeignKey("kullanicilar.id"), index=True)
+    profil_id: Mapped[int] = mapped_column(ForeignKey("profiller.id"), index=True)

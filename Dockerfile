@@ -1,8 +1,8 @@
 # YKS Pusula - bulut (Neon) yayini icin imaj
 #
 # Yerel dosya veritabani yerine Neon PostgreSQL kullanilir:
-#   PUSULA_DATABASE_URL  -> postgresql://...  (Space/panel gizli degiskeni)
-#   PUSULA_SIFRE         -> giris kodu
+#   PUSULA_DATABASE_URL  -> postgresql://...  (panel gizli degiskeni)
+# Giris: hesap bazli (ilk ziyarette /kurulum ekrani yonetici hesabi acar).
 FROM python:3.12-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \

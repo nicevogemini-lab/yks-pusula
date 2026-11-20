@@ -15,7 +15,47 @@ export async function ciz(kap, durum) {
     profilKarti(durum, hedef),
     aiKarti(aiDurum),
     veriKarti(saglik, durum),
+    oturumKarti(durum),
     hakkindaKarti()
+  );
+}
+
+/** Oturum sahibinin rolü ve yetki özeti */
+function oturumKarti(durum) {
+  const kullanici = durum.kullanici;
+  if (!kullanici?.giris_zorunlu) return h("span");
+  const yetkiler = {
+    yonetici: "Tüm sayfalar, kullanıcı tanımlama ve şifre sıfırlama.",
+    veli: "Deneme girişi, plan ve ayarlar. Kullanıcı tanımlayamaz.",
+    ogrenci: "Panel, müfredat, plan, analiz ve koç. Deneme girişi ile ayarlar kapalıdır.",
+  };
+  return h(
+    "section",
+    { class: "kart" },
+    h(
+      "div",
+      { class: "kart-baslik" },
+      h(
+        "div",
+        {},
+        h("h2", { text: "Oturum" }),
+        h("p", { text: kullanici.ad })
+      ),
+      rozet(kullanici.rol_etiketi, "marka")
+    ),
+    h(
+      "div",
+      { class: "ayar-bolum" },
+      h("div", { class: "ayar-izgara" },
+        h("div", { class: "form-alan" },
+          h("label", { text: "Kullanıcı adı" }),
+          h("p", { style: { fontSize: "13px" }, text: kullanici.kullanici_adi })),
+        h("div", { class: "form-alan" },
+          h("label", { text: "Yetkiler" }),
+          h("p", { style: { fontSize: "13px" }, text: yetkiler[kullanici.rol] || "" }))),
+      h("div", { style: { display: "flex", justifyContent: "flex-end", gap: "8px" } },
+        h("a", { class: "dugme ikincil kucuk", href: "/cikis" }, "Oturumu kapat"))
+    )
   );
 }
 
@@ -76,7 +116,12 @@ function profilKarti(durum, hedef) {
         okul_bitis: okulBitGirdi.value || "15:20",
         okul_donus: okulDonusGirdi.value || "",
       });
-      bildir("Profil güncellendi, plan yenilendi.");
+      const sinifDegisti = Number(sinifSecim.value) !== p.sinif;
+      bildir(
+        sinifDegisti
+          ? "Profil güncellendi. Sınıf değişti: kapsam dışı konular plandan düştü, planı yeniden üret."
+          : "Profil güncellendi, plan yenilendi."
+      );
       await durum.profilGuncellendi(yeni);
     } catch (hata) {
       bildir(hata.message, "hata");
@@ -98,7 +143,8 @@ function profilKarti(durum, hedef) {
       h("div", { class: "ayar-izgara" },
         h("div", { class: "form-alan" }, h("label", { text: "Ad" }), adGirdi),
         h("div", { class: "form-alan" }, h("label", { text: "Alan" }), alanSecim),
-        h("div", { class: "form-alan" }, h("label", { text: "Sınıf" }), sinifSecim),
+        h("div", { class: "form-alan" }, h("label", { text: "Sınıf" }), sinifSecim,
+          h("small", { text: "Sınıf değişince konu kapsamı değişir; planı yeniden üret." })),
         h("div", { class: "form-alan" }, h("label", { text: "Günlük hedef" }), hedefSecim),
         h("div", { class: "form-alan" }, h("label", { text: "Hedef sıralama" }), siralamaGirdi,
           h("small", { text: hedefAciklamasi(hedef) })),

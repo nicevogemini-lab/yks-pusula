@@ -230,6 +230,26 @@ b, strong { font-weight: 650; }
 .profil-cip b { display: block; font-size: 13px; line-height: 1.25; }
 .profil-cip small { display: block; font-size: 11px; color: var(--solgun); }
 
+/* Üst barda oturum sahibi (ad + rol) */
+.oturum-cip {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  line-height: 1.25;
+}
+.oturum-cip b { font-size: 12.5px; font-weight: 650; }
+.oturum-cip small { font-size: 10.5px; color: var(--solgun); text-transform: uppercase; letter-spacing: .04em; }
+
+/* Öğrenci seçici: veli ve yönetici görür */
+.profil-secici {
+  width: auto;
+  max-width: 190px;
+  padding: 7px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
 .sayfa-icerik {
   padding: 22px 26px 48px;
   display: flex;

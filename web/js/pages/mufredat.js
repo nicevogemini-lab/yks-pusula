@@ -69,8 +69,9 @@ export async function ciz(kap, durum) {
         { class: "kart-baslik", style: { alignItems: "center" } },
         h("div", {},
           h("h2", { text: "Konu haritası" }),
-          h("p", { text: `Toplam ${veri.dersler.reduce((t, d) => t + d.konular.length, 0)} konu · alanına ait TYT + AYT dersleri` })),
+          h("p", { text: `Toplam ${veri.dersler.reduce((t, d) => t + d.konular.length, 0)} konu · ${veri.kapsam ? veri.kapsam.etiket : "alanına ait TYT + AYT dersleri"}` })),
         h("div", { style: { display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" } },
+          veri.kapsam ? rozet(`Kapsam: ${veri.kapsam.etiket}`, "marka") : null,
           filtreler,
           h("div", { style: { width: "220px" } }, aramaGirdi))
       ),

@@ -8,6 +8,7 @@ __pycache__/
 veri/
 .env
 .env.bulut
+.env.yayin
 
 # Gecici test veritabanlari
 veri/_*.db

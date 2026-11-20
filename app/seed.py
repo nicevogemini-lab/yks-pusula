@@ -23,6 +23,8 @@ YENI_KOLONLAR: dict[str, dict[str, str]] = {
         "okul_donus": "VARCHAR(5) DEFAULT ''",
     },
     "plan_maddeleri": {"baslangic": "VARCHAR(5) DEFAULT ''"},
+    # Konu bazlı deneme girişi: doğru/yanlış/boş
+    "deneme_konulari": {"dogru": "INTEGER DEFAULT 0", "bos": "INTEGER DEFAULT 0"},
 }
 
 

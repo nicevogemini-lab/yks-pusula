@@ -10,20 +10,21 @@
 from __future__ import annotations
 
 import asyncio
-import secrets
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
-from urllib.parse import parse_qs, quote
+from urllib.parse import parse_qs
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy import select
 from starlette.requests import Request
 
-from . import auth, bekci
+from . import auth, bekci, yetki
 from .api import api
 from .database import BASE_DIR, Base, SessionLocal, engine
+from .models import Kullanici
 from .seed import mufredati_yukle, sema_guncelle
 
 WEB_DIR = BASE_DIR / "web"
@@ -111,34 +112,69 @@ app = FastAPI(title="YKS Pusula", version="0.1.0", lifespan=yasam_dongusu)
 app.include_router(api)
 app.mount("/statik", TazeStaticFiles(directory=WEB_DIR), name="statik")
 
-# Giriş kapısı: bu yollar kod sorulmadan açılır (sağlık kontrolü, statik, giriş)
-SERBEST_ON_EKLER = ("/giris", "/cikis", "/api/saglik", "/statik/", "/y/", "/favicon")
+# Kapı: bu yollar oturum sorulmadan açılır (giriş, kurulum, sağlık, statik)
+SERBEST_ON_EKLER = (
+    "/giris",
+    "/kurulum",
+    "/cikis",
+    "/api/saglik",
+    "/api/kurulum",
+    "/statik/",
+    "/y/",
+    "/favicon",
+)
+
+
+def _istek_metni(govde: bytes) -> dict[str, str]:
+    """Form gövdesini çözer (ek bağımlılık gerekmesin diye elle)."""
+    alanlar = parse_qs(govde.decode("utf-8", "replace"))
+    return {ad: (degerler[0] if degerler else "") for ad, degerler in alanlar.items()}
 
 
 @app.middleware("http")
 async def giris_kapisi(request: Request, call_next):
-    """``PUSULA_SIFRE`` doluysa sayfaları ve API'yi imzalı çereze bağlar.
+    """Oturumu ve hesap kapsamını uygular.
 
-    İnternete açık adreste linki bilen herkesin verileri görmesini engeller.
-    Şifre boşsa (yerel kullanım) kapı kapalıdır ve istekler olduğu gibi geçer.
+    * Hiç yönetici yoksa uygulama kurulum ekranına yönlenir.
+    * Hesap varsa ``/giris`` dışındaki sayfalar ve API imzalı çerez ister.
+    * ``PUSULA_GIRIS_ZORUNLU=0`` iken kapı kapalıdır (yerel deneme/test).
     """
-    if not auth.kapi_acik():
+    if not auth.giris_zorunlu():
+        yetki.kullanici_ayarla(None)
         return await call_next(request)
+
     yol = request.url.path
-    if yol.startswith(SERBEST_ON_EKLER):
-        return await call_next(request)
     cerez = request.cookies.get(auth.COOKIE_AD)
-    if auth.oturum_gecerli(cerez):
+
+    # Kısa ömürlü oturumla kullanıcıyı çöz; istek boyunca bağlantı tutulmaz
+    with SessionLocal() as db:
+        kurulum_gerekli = auth.kurulum_gerekli(db)
+        kullanici = None if kurulum_gerekli else auth.oturum_kullanici(db, cerez)
+
+    if kurulum_gerekli:
+        if yol in ("/kurulum",) or yol.startswith(SERBEST_ON_EKLER):
+            yetki.kullanici_ayarla(None)
+            return await call_next(request)
+        if yol.startswith("/api/"):
+            return JSONResponse({"detail": "Kurulum gerekli"}, status_code=401)
+        return RedirectResponse("/kurulum", status_code=303)
+
+    if kullanici is not None:
+        yetki.kullanici_ayarla(kullanici)
+        request.state.kullanici = kullanici
         yanit = await call_next(request)
         # Ömrünün son üçte birine giren oturum sessizce tazelenir
         if auth.kalan_sn(cerez) < auth.TAZELEME_ESIGI_SN:
-            auth.oturum_kur(yanit, request)
+            with SessionLocal() as db:
+                auth.oturum_kur(yanit, request, db, kullanici)
         return yanit
+
+    yetki.kullanici_ayarla(None)
+    if yol.startswith(SERBEST_ON_EKLER):
+        return await call_next(request)
     if yol.startswith("/api/"):
         return JSONResponse({"detail": "Oturum gerekli"}, status_code=401)
-    if yol in ("", "/"):
-        return RedirectResponse("/giris", status_code=303)
-    return RedirectResponse(f"/giris?next={quote(yol)}", status_code=303)
+    return RedirectResponse(auth.giris_yolu(yol), status_code=303)
 
 
 @app.get("/", include_in_schema=False)
@@ -147,48 +183,102 @@ def kok():
 
 
 @app.get("/giris", include_in_schema=False)
-def giris_formu(request: Request, next: str = "/"):
+def giris_formu(request: Request, next: str = "/", kullanici: str = ""):
     """Giriş ekranı; oturum zaten açıksa doğrudan uygulamaya geçer."""
-    if not auth.kapi_acik():
-        return RedirectResponse("/", status_code=303)
-    if auth.oturum_gecerli(request.cookies.get(auth.COOKIE_AD)):
-        return RedirectResponse(auth.guvenli_hedef(next), status_code=303)
+    with SessionLocal() as db:
+        if auth.kurulum_gerekli(db):
+            return RedirectResponse("/kurulum", status_code=303)
+        if auth.oturum_kullanici(db, request.cookies.get(auth.COOKIE_AD)) is not None:
+            return RedirectResponse(auth.guvenli_hedef(next), status_code=303)
     return HTMLResponse(auth.giris_sayfasi(hedef=next))
 
 
 @app.post("/giris", include_in_schema=False)
 async def giris_yap(request: Request):
-    """Giriş kodunu doğrular; doğruysa imzalı oturum çerezi kurar."""
-    if not auth.kapi_acik():
-        return RedirectResponse("/", status_code=303)
+    """Kullanıcı adı ve şifreyi doğrular; doğruysa imzalı oturum çerezi kurar."""
+    alanlar = _istek_metni(await request.body())
+    hedef = auth.guvenli_hedef(alanlar.get("next") or "/")
+    kullanici_adi = alanlar.get("kullanici", "").strip()
+    sifre = alanlar.get("sifre", "")
+
     if auth.cok_hata(request):
         return HTMLResponse(
             auth.giris_sayfasi(
                 hata="Çok fazla hatalı deneme. Birkaç dakika sonra tekrar dene.",
+                hedef=hedef,
             ),
             status_code=429,
         )
-    # Gövde form kodlamasında gelir (ek bağımlılık gerekmesin diye elle çözülür)
-    govde = (await request.body()).decode("utf-8", "replace")
-    alanlar = parse_qs(govde)
-    hedef = auth.guvenli_hedef((alanlar.get("next") or ["/"])[0])
-    kod = (alanlar.get("kod") or [""])[0].strip()
-    if kod and secrets.compare_digest(kod, auth.sifre()):
-        auth.hata_temizle(request)
-        return auth.oturum_kur(RedirectResponse(hedef, status_code=303), request)
+
+    with SessionLocal() as db:
+        if auth.kurulum_gerekli(db):
+            return RedirectResponse("/kurulum", status_code=303)
+        kullanici = db.execute(
+            select(Kullanici).where(Kullanici.kullanici_adi == kullanici_adi)
+        ).scalar_one_or_none()
+        if (
+            kullanici is not None
+            and kullanici.aktif
+            and auth.sifre_dogrula(sifre, kullanici.sifre_hash)
+        ):
+            auth.hata_temizle(request)
+            return auth.oturum_kur(RedirectResponse(hedef, status_code=303), request, db, kullanici)
+
     auth.hata_ekle(request)
     await asyncio.sleep(0.4)  # Kaba kuvvet denemelerini yavaşlatır
     return HTMLResponse(
-        auth.giris_sayfasi(hata="Giriş kodu hatalı.", hedef=hedef), status_code=401
+        auth.giris_sayfasi(hata="Kullanıcı adı veya şifre hatalı.", hedef=hedef),
+        status_code=401,
     )
+
+
+@app.get("/kurulum", include_in_schema=False)
+def kurulum_formu():
+    """İlk kurulum ekranı; yönetici varsa girişe gönderir."""
+    with SessionLocal() as db:
+        if not auth.kurulum_gerekli(db):
+            return RedirectResponse("/giris", status_code=303)
+    return HTMLResponse(auth.kurulum_sayfasi())
+
+
+@app.post("/kurulum", include_in_schema=False)
+async def kurulum_yap(request: Request):
+    """İlk yönetici hesabını oluşturur (yalnız hesap yokken çalışır)."""
+    alanlar = _istek_metni(await request.body())
+    kullanici_adi = alanlar.get("kullanici", "").strip()
+    ad = alanlar.get("ad", "").strip() or "Yönetici"
+    sifre = alanlar.get("sifre", "")
+    sifre2 = alanlar.get("sifre2", "")
+
+    hata = auth.kullanici_adi_uygun(kullanici_adi) or auth.sifre_uygun(sifre)
+    if not hata and sifre != sifre2:
+        hata = "Şifreler birbiriyle aynı değil."
+    if hata:
+        return HTMLResponse(
+            auth.kurulum_sayfasi(hata, {"kullanici": kullanici_adi, "ad": ad}), status_code=400
+        )
+
+    with SessionLocal() as db:
+        if not auth.kurulum_gerekli(db):
+            return RedirectResponse("/giris", status_code=303)
+        kullanici = Kullanici(
+            kullanici_adi=kullanici_adi,
+            ad_soyad=ad,
+            sifre_hash=auth.sifre_ozetle(sifre),
+            rol="yonetici",
+            aktif=True,
+        )
+        db.add(kullanici)
+        db.commit()
+        db.refresh(kullanici)
+        auth.hata_temizle(request)
+        return auth.oturum_kur(RedirectResponse("/", status_code=303), request, db, kullanici)
 
 
 @app.get("/cikis", include_in_schema=False)
 def cikis():
     """Oturumu kapatır: çerezi siler, giriş ekranına döner."""
-    yanit = RedirectResponse("/giris", status_code=303)
-    yanit.delete_cookie(auth.COOKIE_AD, path="/")
-    return yanit
+    return auth.oturum_sil(RedirectResponse("/giris", status_code=303))
 
 
 @app.get("/y/{surum}/{yol:path}", include_in_schema=False)

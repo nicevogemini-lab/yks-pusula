@@ -59,11 +59,13 @@ function ustKart(veri, durum, hedef) {
   });
 
   const cerceve = veri.zaman_cercevesi;
+  // Sınıf kapsamı: kapsam dışı konular programa hiç girmez
+  const kapsamYazi = veri.kapsam ? ` · ${veri.kapsam.etiket}` : "";
   const altYazi = aylik
-    ? `${veri.hafta_sayisi} hafta · ${tarihTr(veri.baslangic)} – ${tarihTr(veri.bitis)} · haftalık hedef +${hedef.haftalik_gereken_net} net`
+    ? `${veri.hafta_sayisi} hafta · ${tarihTr(veri.baslangic)} – ${tarihTr(veri.bitis)} · haftalık hedef +${hedef.haftalik_gereken_net} net${kapsamYazi}`
     : `Günlük hedef ${dakikaMetni(durum.profil.gunluk_hedef_dk)} · haftalık hedef +${hedef.haftalik_gereken_net} net${
         cerceve ? ` · gün ${cerceve.uyanma}–${cerceve.yatis}` : ""
-      }`;
+      }${kapsamYazi}`;
 
   return h(
     "section",

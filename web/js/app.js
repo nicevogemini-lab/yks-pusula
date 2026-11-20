@@ -5,24 +5,29 @@ import { kurulumGoster } from "./pages/kurulum.js";
 import * as panel from "./pages/panel.js";
 import * as mufredat from "./pages/mufredat.js";
 import * as plan from "./pages/plan.js";
+import * as analiz from "./pages/analiz.js";
 import * as deneme from "./pages/deneme.js";
 import * as koc from "./pages/koc.js";
 import * as ayarlar from "./pages/ayarlar.js";
+import * as kullanicilar from "./pages/kullanicilar.js";
 
+// yetki: sayfayı görebilen roller (yoksa herkes görür)
 const SAYFALAR = [
   { kod: "panel", ad: "Panel", ikon: "panel", modul: panel },
   { kod: "mufredat", ad: "Müfredat", ikon: "kitap", modul: mufredat },
   { kod: "plan", ad: "Plan", ikon: "takvim", modul: plan },
-  { kod: "deneme", ad: "Denemeler", ikon: "grafik", modul: deneme },
+  { kod: "analiz", ad: "Analiz", ikon: "grafik", modul: analiz },
+  { kod: "deneme", ad: "Denemeler", ikon: "kalem", modul: deneme, yetki: ["yonetici", "veli"] },
   { kod: "koc", ad: "Yapay Zekâ Koçu", ikon: "sohbet", modul: koc },
-  { kod: "ayarlar", ad: "Ayarlar", ikon: "ayar", modul: ayarlar },
+  { kod: "ayarlar", ad: "Ayarlar", ikon: "ayar", modul: ayarlar, yetki: ["yonetici", "veli"] },
+  { kod: "kullanicilar", ad: "Kullanıcılar", ikon: "hedef", modul: kullanicilar, yetki: ["yonetici"] },
 ];
 
 const kok = document.getElementById("kok");
-const durum = { meta: null, profil: null, sayfa: "panel", icerik: null };
+const durum = { meta: null, kullanici: null, profiller: [], profil: null, sayfa: "panel", icerik: null };
 
 // Arayüz sürümü: kullanıcı yeni sürümün yüklendiğini menünün altından görür
-const SURUM = "v2.5";
+const SURUM = "v2.7";
 
 // ---------------------------------------------------------------- yardımcı
 function kalanGun(isoTarih) {
@@ -33,9 +38,16 @@ function kalanGun(isoTarih) {
   return Math.max(0, Math.round((hedef - bugun) / 86400000));
 }
 
+/** Oturum sahibinin rolüne göre görünen sayfalar */
+function gorunurSayfalar() {
+  const rol = durum.kullanici?.rol || "yonetici";
+  return SAYFALAR.filter((s) => !s.yetki || s.yetki.includes(rol));
+}
+
 function aktifSayfa() {
+  const sayfalar = gorunurSayfalar();
   const kod = (location.hash || "#/panel").replace(/^#\/?/, "");
-  return SAYFALAR.find((s) => s.kod === kod) || SAYFALAR[0];
+  return sayfalar.find((s) => s.kod === kod) || sayfalar[0] || SAYFALAR[0];
 }
 
 // ---------------------------------------------------------------- kabuk
@@ -56,7 +68,7 @@ function kabukCiz() {
     h("div", { class: "menu-baslik", text: "Çalışma Alanı" })
   );
 
-  SAYFALAR.forEach((sayfa) => {
+  gorunurSayfalar().forEach((sayfa) => {
     menu.append(
       h(
         "a",
@@ -90,14 +102,15 @@ function kabukCiz() {
     h(
       "div",
       { class: "ust-sag" },
-      // Giriş kapısı açıksa oturumu kapatma bağlantısı görünür
-      durum.meta?.giris_acik
+      // Öğrenci tek profil görür; veli/yönetici öğrenci değiştirebilir
+      durum.profiller.length > 1 ? profilSecici() : null,
+      durum.kullanici?.giris_zorunlu
         ? h("a", { class: "cikis-link", href: "/cikis", title: "Oturumu kapat", text: "Çıkış" })
         : null,
       geriSayim,
       h(
         "a",
-        { class: "profil-cip", href: "#/ayarlar" },
+        { class: "profil-cip", href: "#/ayarlar", title: durum.kullanici?.rol_etiketi || "" },
         h("span", { class: "avatar", text: (durum.profil.ad || "Ö").trim().charAt(0).toUpperCase() }),
         h(
           "div",
@@ -105,7 +118,8 @@ function kabukCiz() {
           h("b", { text: durum.profil.ad }),
           h("small", { text: yuzdeMetni })
         )
-      )
+      ),
+      oturumCipi()
     )
   );
 
@@ -115,6 +129,40 @@ function kabukCiz() {
   durum.baslik = baslik;
   durum.alt = alt;
   durum.geriSayim = geriSayim;
+}
+
+/** Üst barda oturum sahibinin adı ve rolü */
+function oturumCipi() {
+  const kullanici = durum.kullanici;
+  if (!kullanici) return null;
+  return h(
+    "span",
+    { class: "oturum-cip", title: `Kullanıcı adı: ${kullanici.kullanici_adi}` },
+    h("b", { text: kullanici.ad }),
+    h("small", { text: kullanici.rol_etiketi })
+  );
+}
+
+/** Veli/yönetici için öğrenci seçici */
+function profilSecici() {
+  const secim = h(
+    "select",
+    {
+      class: "secim profil-secici",
+      title: "Görüntülenen öğrenci",
+      onchange: (olay) => {
+        const secili = durum.profiller.find((p) => p.id === Number(olay.target.value));
+        if (!secili) return;
+        durum.profil = secili;
+        localStorage.setItem("pusula_profil", String(secili.id));
+        kabukCiz();
+        sayfaCiz();
+      },
+    },
+    durum.profiller.map((p) =>
+      h("option", { value: p.id, selected: durum.profil.id === p.id }, p.ad))
+  );
+  return secim;
 }
 
 function ustBarGuncelle(sayfa) {
@@ -134,6 +182,11 @@ function ustBarGuncelle(sayfa) {
 // ---------------------------------------------------------------- yönlendirme
 async function sayfaCiz() {
   const sayfa = aktifSayfa();
+  // Rolün göremediği sayfaya yazılan adres panele döner
+  if (!gorunurSayfalar().includes(sayfa)) {
+    location.hash = "#/panel";
+    return;
+  }
   durum.sayfa = sayfa.kod;
   ustBarGuncelle(sayfa);
   durum.icerik.replaceChildren(yukleniyorKarti());
@@ -157,6 +210,8 @@ function yonlendirmeKur() {
 /** Sayfaların veri değişikliğinden sonra çağırdığı tazeleme */
 durum.yenile = () => sayfaCiz();
 durum.profilGuncellendi = async (yeni) => {
+  const sirada = durum.profiller.findIndex((p) => p.id === yeni.id);
+  if (sirada >= 0) durum.profiller[sirada] = yeni;
   durum.profil = yeni;
   kabukCiz();
   await sayfaCiz();
@@ -170,7 +225,9 @@ durum.cikis = () => {
 async function basla() {
   try {
     durum.meta = await api.get("/api/meta");
+    durum.kullanici = durum.meta.oturum || null;
     const profiller = await api.get("/api/profiller");
+    durum.profiller = profiller;
     const kayitli = Number(localStorage.getItem("pusula_profil"));
     durum.profil = profiller.find((p) => p.id === kayitli) || profiller[0] || null;
   } catch (hata) {
@@ -205,6 +262,7 @@ async function basla() {
 
   if (!durum.profil) {
     kurulumGoster(kok, durum.meta, async (profil) => {
+      durum.profiller = [profil, ...durum.profiller];
       durum.profil = profil;
       localStorage.setItem("pusula_profil", String(profil.id));
       kabukCiz();

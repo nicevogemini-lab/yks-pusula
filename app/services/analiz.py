@@ -18,11 +18,24 @@ demektir; günlük/haftalık/aylık programlar bu sıraya göre kurulur.
 """
 from __future__ import annotations
 
+from datetime import date, timedelta
+
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from ..data import alan_ders_kodlari
-from ..models import Calisma, Deneme, DenemeKonu, DenemeSonuc, Ders, Konu, KonuDurum, Profil
+from ..data import BECERI_ETIKET, alan_ders_kodlari
+from ..models import (
+    Calisma,
+    Deneme,
+    DenemeKonu,
+    DenemeSonuc,
+    Ders,
+    Konu,
+    KonuDurum,
+    PlanItem,
+    Profil,
+)
+from . import sinif as sinif_servisi
 from .hedef import ders_agirliklari, hedef_ozeti
 
 # Konu bazında yorum yapmak için gereken en az soru sayısı
@@ -84,7 +97,7 @@ def _calisma_konulari(db: Session, profil_id: int) -> dict[int, dict]:
 
 
 def _deneme_konu_verisi(db: Session, profil_id: int) -> dict[int, dict]:
-    """Denemelerde yanlış yapılan konuların toplamı (konu bazlı kanıt)."""
+    """Denemelerde konu bazlı doğru/yanlış/boş toplamı (konu kanıtı)."""
     deneme_idleri = list(
         db.execute(select(Deneme.id).where(Deneme.profil_id == profil_id)).scalars()
     )
@@ -94,8 +107,12 @@ def _deneme_konu_verisi(db: Session, profil_id: int) -> dict[int, dict]:
     for kayit in db.execute(
         select(DenemeKonu).where(DenemeKonu.deneme_id.in_(deneme_idleri))
     ).scalars():
-        satir = sonuc.setdefault(kayit.konu_id, {"yanlis": 0, "deneme": 0})
-        satir["yanlis"] += kayit.yanlis or 1
+        satir = sonuc.setdefault(
+            kayit.konu_id, {"dogru": 0, "yanlis": 0, "bos": 0, "deneme": 0}
+        )
+        satir["dogru"] += kayit.dogru or 0
+        satir["yanlis"] += kayit.yanlis or 0
+        satir["bos"] += kayit.bos or 0
         satir["deneme"] += 1
     return sonuc
 
@@ -195,17 +212,21 @@ def konu_tablosu(
         c_toplam = c_dogru + c_yanlis
 
         deneme = deneme_konulari.get(konu.id) or {}
+        d_dogru = deneme.get("dogru", 0)
         d_yanlis = deneme.get("yanlis", 0)
+        d_bos = deneme.get("bos", 0)
+        d_toplam = d_dogru + d_yanlis + d_bos
         d_sinav = deneme.get("deneme", 0)
 
-        if c_toplam >= KONU_VERI_ESIGI or d_yanlis:
-            # Denemede işaretlenen yanlış da konu için gerçek kanıttır
-            toplam_soru = c_toplam + d_yanlis
+        if c_toplam >= KONU_VERI_ESIGI or d_dogru + d_yanlis:
+            # Denemede işaretlenen konu satırı da konu için gerçek kanıttır;
+            # yalnız yanlış işaretlenmiş eski kayıtlar tamamen yanlış sayılır.
+            toplam_soru = c_toplam + d_toplam
             # Laplace düzeltmesi: az soruda %0 / %100 gibi uçlara savrulmayı önler
-            basari = (c_dogru + 1) / (toplam_soru + 2)
-            if d_yanlis and c_toplam:
+            basari = (c_dogru + d_dogru + 1) / (toplam_soru + 2)
+            if d_dogru + d_yanlis and c_toplam:
                 kaynak = "deneme+çalışma"
-            elif d_yanlis:
+            elif d_dogru + d_yanlis:
                 kaynak = "deneme"
             else:
                 kaynak = "çalışma"
@@ -242,6 +263,7 @@ def konu_tablosu(
                 "renk": ders["renk"],
                 "sinif": konu.sinif,
                 "sira": konu.sira,
+                "kapsam_disi": sinif_servisi.kapsam_disi(konu.sinif, profil.sinif),
                 "beklenen_soru": round(beklenen, 2),
                 "agirlik_payi": round(pay, 4),
                 "basari": round(basari, 3),
@@ -251,7 +273,9 @@ def konu_tablosu(
                 "guven": guven,
                 "calisma_dogru": c_dogru,
                 "calisma_yanlis": c_yanlis,
+                "deneme_dogru": d_dogru,
                 "deneme_yanlis": d_yanlis,
+                "deneme_bos": d_bos,
                 "deneme_sayisi": d_sinav,
                 "etkin_puan": round(etkin, 2),
             }
@@ -262,8 +286,8 @@ def konu_tablosu(
 
 
 def _konu_kaniti(konu: dict) -> bool:
-    """Konuya özgü veri var mı? (denemede işaretlenen yanlış ya da çalışma)"""
-    return bool(konu["deneme_yanlis"]) or (
+    """Konuya özgü veri var mı? (denemede doğru/yanlış işareti ya da çalışma)"""
+    return bool(konu["deneme_dogru"] + konu["deneme_yanlis"]) or (
         konu["calisma_dogru"] + konu["calisma_yanlis"] >= KONU_VERI_ESIGI
     )
 
@@ -282,6 +306,9 @@ def konu_aciklari(
     gruplar: dict[str, dict] = {}
     for konu in konular:
         if konu["beklenen_soru"] <= 0 or konu["basari"] >= esik:
+            continue
+        # Kapsam dışı konu analizde görünür ama plan önceliğine girmez
+        if konu.get("kapsam_disi"):
             continue
         # Ders ortalamasından türetilen tahmin, konu ayrımı taşımaz; açık
         # konu listesine yalnız konuya özgü kanıt (deneme işareti/çalışma) girer.
@@ -317,6 +344,230 @@ def konu_aciklari(
     )[:ders_sayisi]
 
 
+def mufredat_yorumu(
+    db: Session, profil: Profil, konular: list[dict] | None = None, sinir: int = 40
+) -> dict:
+    """Açık konuları beceri, ağırlık, ön koşul ve deneme kanıtıyla yorumlar.
+
+    Ders bazında "müfredat açığı" sayısı da buradan çıkar; analiz sayfasındaki
+    yorum kartı ile plan uyumu aynı veriyi kullanır.
+    """
+    satirlar = konular if konular is not None else konu_tablosu(db, profil)
+    kayitlar = {
+        k.id: k
+        for k in db.execute(
+            select(Konu).where(Konu.ders_kod.in_(alan_ders_kodlari(profil.alan)))
+        ).scalars()
+    }
+    kod_map = {k.kod: k for k in kayitlar.values()}
+    durumlar = _durum_haritasi(db, profil.id)
+
+    acik = [
+        s
+        for s in satirlar
+        if s["beklenen_soru"] > 0
+        and s["basari"] < KONU_ACIK_ESIGI
+        and _konu_kaniti(s)
+        and not s.get("kapsam_disi")
+    ]
+    acik.sort(key=lambda s: -s["etkin_puan"])
+
+    def onkosul_durumu(ham: str) -> list[dict]:
+        sonuc = []
+        for kod in [k for k in (ham or "").split(",") if k]:
+            kayit = kod_map.get(kod)
+            durum = durumlar.get(kayit.id) if kayit else None
+            sonuc.append(
+                {
+                    "kod": kod,
+                    "ad": kayit.ad if kayit else kod,
+                    "durum": durum.durum if durum else "yok",
+                    "hazir": bool(durum and durum.durum in {"tamam", "tekrar"}),
+                }
+            )
+        return sonuc
+
+    yorumlanan = []
+    for s in acik[: max(1, sinir)]:
+        kayit = kayitlar.get(s["id"])
+        beceriler = [b for b in ((kayit.beceri if kayit else "") or "").split(",") if b]
+        onkosullar = onkosul_durumu(kayit.onkosul if kayit else "")
+        yorumlanan.append(
+            {
+                "konu_id": s["id"],
+                "konu": s["ad"],
+                "ders_kod": s["ders_kod"],
+                "ders": s["ders_ad"],
+                "sinav": s["sinav"],
+                "renk": s["renk"],
+                "sinif": s["sinif"],
+                "beceri": beceriler,
+                "beceri_etiket": [BECERI_ETIKET.get(b, b) for b in beceriler],
+                "agirlik": kayit.agirlik if kayit else 0,
+                "beklenen_soru": s["beklenen_soru"],
+                "etkin_puan": s["etkin_puan"],
+                "basari_yuzde": s["basari_yuzde"],
+                "deneme_dogru": s["deneme_dogru"],
+                "deneme_yanlis": s["deneme_yanlis"],
+                "deneme_bos": s["deneme_bos"],
+                "kaynak": s["kaynak"],
+                "onkosul": onkosullar,
+                "onkosul_hazir": all(o["hazir"] for o in onkosullar),
+                "tahmini_dk": kayit.sure_dk if kayit else 0,
+            }
+        )
+
+    # Ders bazında müfredat açığı: kapsam içi konu sayısına göre açık oranı
+    dersler: dict[str, dict] = {}
+    for s in satirlar:
+        ders = dersler.setdefault(
+            s["ders_kod"],
+            {
+                "ders_kod": s["ders_kod"],
+                "ders": s["ders_ad"],
+                "sinav": s["sinav"],
+                "renk": s["renk"],
+                "konu_sayisi": 0,
+                "acik_sayisi": 0,
+                "kapsam_disi": 0,
+            },
+        )
+        if s.get("kapsam_disi"):
+            ders["kapsam_disi"] += 1
+            continue
+        ders["konu_sayisi"] += 1
+    acik_idler = {s["id"] for s in acik}
+    for s in satirlar:
+        if s["id"] in acik_idler:
+            dersler[s["ders_kod"]]["acik_sayisi"] += 1
+    ders_listesi = []
+    for ders in dersler.values():
+        ders["acik_oran"] = (
+            round(100 * ders["acik_sayisi"] / ders["konu_sayisi"])
+            if ders["konu_sayisi"]
+            else 0
+        )
+        ders_listesi.append(ders)
+    ders_listesi.sort(key=lambda d: (-d["acik_sayisi"], d["ders_kod"]))
+
+    kapsam_ici = sum(d["konu_sayisi"] for d in ders_listesi)
+    etiket = sinif_servisi.kapsam_etiketi(profil.sinif)
+    yorum = (
+        f"{etiket}: {kapsam_ici} konunun {len(acik)} tanesi açık. "
+        if kapsam_ici
+        else "Kapsam içinde konu bulunamadı. "
+    )
+    if ders_listesi and ders_listesi[0]["acik_sayisi"]:
+        ilk = ders_listesi[0]
+        yorum += f"En büyük açık {ilk['ders']} dersinde ({ilk['acik_sayisi']} konu)."
+    eksik_onkosul = sum(1 for k in yorumlanan if not k["onkosul_hazir"])
+    if eksik_onkosul:
+        yorum += f" {eksik_onkosul} konunun ön koşulu henüz tamamlanmadı."
+
+    return {
+        "kapsam_etiketi": etiket,
+        "kapsam_ici_konu": kapsam_ici,
+        "acik_konu_sayisi": len(acik),
+        "dersler": ders_listesi,
+        "konular": yorumlanan,
+        "yorum": yorum,
+    }
+
+
+def plan_uyumu(
+    db: Session, profil: Profil, gun: int = 7, konular: list[dict] | None = None
+) -> dict:
+    """Yaklaşan plan maddelerini açık konularla karşılaştırır.
+
+    ``planda_olmayan_aciklar``: açık olduğu halde planda hiç bloğu olmayan konular.
+    ``planda_gereksiz``: planda yer alan ama açık olmayan, üstelik sağlam
+    bilinen (tekrar gerektirmeyen) konular.
+    """
+    gun = max(1, min(30, gun))
+    bugun = date.today()
+    bitis = bugun + timedelta(days=gun - 1)
+    satirlar = konular if konular is not None else konu_tablosu(db, profil)
+    acik = {
+        s["id"]: s
+        for s in satirlar
+        if s["beklenen_soru"] > 0
+        and s["basari"] < KONU_ACIK_ESIGI
+        and _konu_kaniti(s)
+        and not s.get("kapsam_disi")
+    }
+    durumlar = _durum_haritasi(db, profil.id)
+
+    maddeler = list(
+        db.execute(
+            select(PlanItem).where(
+                PlanItem.profil_id == profil.id,
+                PlanItem.tarih >= bugun,
+                PlanItem.tarih <= bitis,
+            )
+        ).scalars()
+    )
+    plan_konulari: dict[int, PlanItem] = {}
+    gereksiz = []
+    for madde in maddeler:
+        if madde.konu_id is None:
+            continue
+        plan_konulari.setdefault(madde.konu_id, madde)
+        if madde.konu_id in acik:
+            continue
+        durum = durumlar.get(madde.konu_id)
+        if durum and durum.durum == "tamam" and (durum.guven or 0) >= 4:
+            gereksiz.append(
+                {
+                    "madde_id": madde.id,
+                    "baslik": madde.baslik,
+                    "ders_kod": madde.ders_kod,
+                    "tarih": madde.tarih.isoformat(),
+                    "sure_dk": madde.sure_dk,
+                    "tur": madde.tur,
+                }
+            )
+
+    eksikler = [
+        {
+            "konu_id": s["id"],
+            "konu": s["ad"],
+            "ders_kod": s["ders_kod"],
+            "ders": s["ders_ad"],
+            "renk": s["renk"],
+            "sinif": s["sinif"],
+            "etkin_puan": s["etkin_puan"],
+            "basari_yuzde": s["basari_yuzde"],
+        }
+        for s in sorted(acik.values(), key=lambda s: -s["etkin_puan"])
+        if s["id"] not in plan_konulari
+    ]
+    kapsanan = len(set(acik) & set(plan_konulari))
+    kapsam_orani = round(100 * kapsanan / len(acik)) if acik else 100
+
+    yorum = (
+        f"Önümüzdeki {gun} günde {len(plan_konulari)} konu planda. "
+        f"Açık konuların %{kapsam_orani}'i programda yer alıyor."
+    )
+    if eksikler:
+        yorum += f" {len(eksikler)} açık konu planda yok."
+    if gereksiz:
+        yorum += f" {len(gereksiz)} blok artık tekrar gerektirmeyen konularda."
+
+    return {
+        "gun": gun,
+        "baslangic": bugun.isoformat(),
+        "bitis": bitis.isoformat(),
+        "plan_madde_sayisi": len(maddeler),
+        "plan_konu_sayisi": len(plan_konulari),
+        "acik_konu_sayisi": len(acik),
+        "kapsanan_acik": kapsanan,
+        "kapsam_orani": kapsam_orani,
+        "planda_olmayan_aciklar": eksikler[:10],
+        "planda_gereksiz": gereksiz[:10],
+        "yorum": yorum,
+    }
+
+
 def analiz_ozeti(db: Session, profil: Profil) -> dict:
     """Deneme tablosu + konu ağırlıkları + en çok kazandıracak konular."""
     dersler = ders_tablosu(db, profil)
@@ -343,7 +594,10 @@ def analiz_ozeti(db: Session, profil: Profil) -> dict:
             if k["beklenen_soru"] > 0
             and k["basari"] < KONU_ACIK_ESIGI
             and _konu_kaniti(k)
+            and not k.get("kapsam_disi")
         ),
+        "mufredat": mufredat_yorumu(db, profil, konular),
+        "plan_uyumu": plan_uyumu(db, profil, 7, konular),
         "toplam_beklenen_soru": round(sum(k["beklenen_soru"] for k in konular), 1),
         "toplam_etkin_puan": round(sum(k["etkin_puan"] for k in konular), 1),
         "veri_notu": (

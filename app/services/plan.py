@@ -26,6 +26,7 @@ from sqlalchemy.orm import Session
 
 from ..data import alan_ders_kodlari
 from ..models import Ders, Konu, KonuDurum, PlanItem, Profil
+from . import sinif as sinif_servisi
 from .analiz import konu_tablosu
 from .hedef import ders_agirliklari, hedef_ozeti
 from .program import (
@@ -96,6 +97,9 @@ def oncelikli_konular(db: Session, profil: Profil, limit: int = 40) -> list[tupl
 
     puanli: list[tuple[Konu, float]] = []
     for konu in konular:
+        # Sınıf kapsamı dışındaki konu plana aday olmaz (analizde görünür)
+        if sinif_servisi.kapsam_disi(konu.sinif, profil.sinif):
+            continue
         durum = durumlar.get(konu.id)
         durum_adi = durum.durum if durum else "yok"
         guven = durum.guven if durum else 0
@@ -128,6 +132,9 @@ def oncelikli_konular(db: Session, profil: Profil, limit: int = 40) -> list[tupl
         ]
         if eksik_onkosul:
             puan -= 2.0
+
+        # Güncel sınıfın konuları öne alınır (11. sınıfta 11. sınıf konuları +%20)
+        puan *= sinif_servisi.oncelik_carpani(konu.sinif, profil.sinif)
 
         puanli.append((konu, puan))
 
