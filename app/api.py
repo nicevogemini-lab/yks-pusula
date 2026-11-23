@@ -33,6 +33,7 @@ from .models import (
 from .services import ai as ai_servis
 from .services import analiz as analiz_servis
 from .services import degerlendirme as degerlendirme_servis
+from .services import ders_programi as okul_servisi
 from .services import hedef as hedef_servis
 from .services import scoring
 from .services import sinif as sinif_servisi
@@ -285,6 +286,20 @@ class SifreDegisiklik(BaseModel):
 
     mevcut: str = Field(min_length=1, max_length=128)
     yeni: str = Field(min_length=6, max_length=128)
+
+
+class DersProgramiGiris(BaseModel):
+    """Haftalık okul çizelgesi: hücre listesi ya da sınıf şablonu."""
+
+    hucreler: list[dict] = []
+    sablon_uygula: int | None = None   # 11 / 12: hazır çizelgeyi yükle
+
+
+class IslenenKonuGiris(BaseModel):
+    """Okulda o gün işlenen konular; boş liste günün girişini temizler."""
+
+    tarih: date | None = None
+    konu_idler: list[int] = []
 
 
 # --------------------------------------------------------------------------
@@ -1561,6 +1576,65 @@ def plan_madde_ekle(profil_id: int, veri: PlanMaddeGiris, db: Session = Depends(
     # Gün akışı saatleri yeniden yerleştirilir
     zamanlari_yerlestir(db, profil, tarih, tarih)
     return {"ok": True, "madde_id": madde.id, "zaten_var": False, "tarih": tarih.isoformat()}
+
+
+# --------------------------------------------------------------------------
+# Okul ders programı ve o gün işlenen konular
+# --------------------------------------------------------------------------
+@api.get("/profil/{profil_id}/ders-programi")
+def ders_programi_getir(profil_id: int, db: Session = Depends(get_db)):
+    """Haftalık okul çizelgesi, bugünün dersleri ve ders başına konu listesi."""
+    profil = _profil_getir(db, profil_id)
+    return okul_servisi.ozet(db, profil)
+
+
+@api.put("/profil/{profil_id}/ders-programi")
+def ders_programi_kaydet(
+    profil_id: int, veri: DersProgramiGiris, db: Session = Depends(get_db)
+):
+    """Çizelgeyi kaydeder; ``sablon_uygula`` verilirse 11/12 çizelgesi yüklenir."""
+    yetki.yazma_kontrol("plan")
+    profil = _profil_getir(db, profil_id)
+    hucreler = veri.hucreler
+    if veri.sablon_uygula is not None:
+        if veri.sablon_uygula not in (11, 12):
+            raise HTTPException(400, "Hazır çizelge yalnız 11. ve 12. sınıf için var")
+        hucreler = okul_servisi.sablon(veri.sablon_uygula, profil.alan)
+        if not hucreler:
+            raise HTTPException(400, "Bu sınıf için hazır çizelge bulunamadı")
+    yazilan = okul_servisi.program_yaz(db, profil.id, hucreler)
+    return {"ok": True, "hucre": yazilan, "ozet": okul_servisi.ozet(db, profil)}
+
+
+@api.get("/profil/{profil_id}/islenen")
+def islenen_listesi(profil_id: int, gun: int = 7, db: Session = Depends(get_db)):
+    """Son günlerde okulda işlenen konular (tekrar takviminin kanıtı)."""
+    profil = _profil_getir(db, profil_id)
+    return okul_servisi.son_islenenler(db, profil, gun_sayisi=max(1, min(30, gun)))
+
+
+@api.post("/profil/{profil_id}/islenen")
+def islenen_kaydet(
+    profil_id: int, veri: IslenenKonuGiris, db: Session = Depends(get_db)
+):
+    """Okulda işlenen konuları kaydeder, günlük planı tekrar bloklarıyla tazeler."""
+    yetki.yazma_kontrol("plan")
+    profil = _profil_getir(db, profil_id)
+    tarih = veri.tarih or date.today()
+    if tarih > date.today():
+        raise HTTPException(400, "İleri tarih için konu girilemez")
+    try:
+        okul_servisi.islenen_yaz(db, profil, tarih, veri.konu_idler)
+    except ValueError as hata:
+        raise HTTPException(400, str(hata))
+    # Plan tazelenir: işlenen konular bugünün tekrar/pekiştirme bloklarına girer
+    eklenen = gunluk_plan_uret(db, profil, gun_sayisi=7)
+    return {
+        "ok": True,
+        "tarih": tarih.isoformat(),
+        "plan": eklenen,
+        "ozet": okul_servisi.ozet(db, profil, tarih),
+    }
 
 
 # --------------------------------------------------------------------------

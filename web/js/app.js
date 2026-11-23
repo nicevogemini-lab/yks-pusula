@@ -4,6 +4,7 @@ import { h, ikon, hataKarti, yukleniyorKarti } from "./ui.js";
 import * as panel from "./pages/panel.js";
 import * as mufredat from "./pages/mufredat.js";
 import * as plan from "./pages/plan.js";
+import * as okul from "./pages/okul.js";
 import * as analiz from "./pages/analiz.js";
 import * as deneme from "./pages/deneme.js";
 import * as koc from "./pages/koc.js";
@@ -15,6 +16,7 @@ const SAYFALAR = [
   { kod: "panel", ad: "Panel", ikon: "panel", modul: panel },
   { kod: "mufredat", ad: "Müfredat", ikon: "kitap", modul: mufredat },
   { kod: "plan", ad: "Plan", ikon: "takvim", modul: plan },
+  { kod: "okul", ad: "Ders Programı", ikon: "okul", modul: okul },
   { kod: "analiz", ad: "Analiz", ikon: "grafik", modul: analiz },
   { kod: "deneme", ad: "Denemeler", ikon: "kalem", modul: deneme, yetki: ["yonetici", "veli"] },
   { kod: "koc", ad: "Yapay Zekâ Koçu", ikon: "sohbet", modul: koc },
@@ -26,7 +28,7 @@ const kok = document.getElementById("kok");
 const durum = { meta: null, kullanici: null, profiller: [], profil: null, sayfa: "panel", icerik: null };
 
 // Arayüz sürümü: kullanıcı yeni sürümün yüklendiğini menünün altından görür
-const SURUM = "v3.2";
+const SURUM = "v3.3";
 
 // ---------------------------------------------------------------- yardımcı
 function kalanGun(isoTarih) {

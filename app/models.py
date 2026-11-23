@@ -252,6 +252,58 @@ class PlanItem(Base):
     baslangic: Mapped[str] = mapped_column(String(5), default="")
 
 
+class DersProgrami(Base):
+    """Haftalık okul ders programı hücresi (gün + ders sırası).
+
+    ``gun`` 0 = Pazartesi ... 6 = Pazar. ``ders`` okul dersi anahtarıdır
+    (``ders_programi.OKUL_DERSLERI``); YKS ders kodlarına servis katmanında
+    eşlenir. Böylece beden eğitimi gibi sınavda çıkmayan dersler de çizelgede
+    yer alır ama plana konu üretmez.
+    """
+
+    __tablename__ = "ders_programi"
+    __table_args__ = (
+        UniqueConstraint("profil_id", "gun", "sira", name="uq_profil_gun_ders"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    profil_id: Mapped[int] = mapped_column(ForeignKey("profiller.id"), index=True)
+    gun: Mapped[int] = mapped_column(Integer, default=0)
+    sira: Mapped[int] = mapped_column(Integer, default=1)
+    ders: Mapped[str] = mapped_column(String(24), default="")
+
+    def to_dict(self) -> dict:
+        return {
+            "gun": self.gun,
+            "sira": self.sira,
+            "ders": self.ders,
+        }
+
+
+class IslenenKonu(Base):
+    """Okulda o gün işlenen konu; günlük plan tekrar/pekiştirme bloğu üretir."""
+
+    __tablename__ = "islenen_konular"
+    __table_args__ = (
+        UniqueConstraint("profil_id", "tarih", "konu_id", name="uq_profil_tarih_konu"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    profil_id: Mapped[int] = mapped_column(ForeignKey("profiller.id"), index=True)
+    tarih: Mapped[date] = mapped_column(Date, default=date.today, index=True)
+    konu_id: Mapped[int] = mapped_column(ForeignKey("konular.id"), index=True)
+    ders_kod: Mapped[str] = mapped_column(String(16), default="")
+    olusturma: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "tarih": self.tarih.isoformat() if self.tarih else None,
+            "konu_id": self.konu_id,
+            "ders_kod": self.ders_kod,
+        }
+
+
 class AiMesaj(Base):
     """Yapay zeka koç sohbet geçmişi."""
 

@@ -31,5 +31,6 @@ export const api = {
   get: (yol) => istek(yol),
   post: (yol, govde) => istek(yol, { method: "POST", body: JSON.stringify(govde ?? {}) }),
   patch: (yol, govde) => istek(yol, { method: "PATCH", body: JSON.stringify(govde ?? {}) }),
+  put: (yol, govde) => istek(yol, { method: "PUT", body: JSON.stringify(govde ?? {}) }),
   sil: (yol) => istek(yol, { method: "DELETE" }),
 };

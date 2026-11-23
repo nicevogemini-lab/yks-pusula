@@ -10,13 +10,16 @@ export const alt = "Günlük, haftalık ve aylık program · konu ağırlığın
 let donem = "gunluk";
 
 export async function ciz(kap, durum) {
-  const [veri, hedef] = await Promise.all([
+  const [veri, hedef, okul] = await Promise.all([
     donemVerisi(durum.profil.id),
     api.get(`/api/hedef/${durum.profil.id}`),
+    // Okul çizelgesi/konu girişi yoksa plan yine çizilir
+    api.get(`/api/profil/${durum.profil.id}/ders-programi`).catch(() => null),
   ]);
 
   kap.replaceChildren(
     ustKart(veri, durum, hedef),
+    ...(donem === "gunluk" && okul ? [okulKarti(okul)] : []),
     hedefKarti(hedef, {
       kompakt: true,
       baslik: "Bu program hangi hedefe göre kuruldu?",
@@ -86,6 +89,39 @@ function ustKart(veri, durum, hedef) {
       class: "ipucu",
       text: "Program üç kaynağa göre kurulur: deneme sonuçları (yanlış çıkan konu öne alınır), YKS kazanım ağırlığı ve PDR önerileri (8 saat uyku, en fazla 50 dakikalık bloklar, 10 dakika mola, okul sonrası geçiş molası, haftada bir yarım gün serbest). Aylık görünümde hafta içi konu blokları, cumartesi gerçek saatinde deneme, pazar tekrar ve sosyal-duygusal öz değerlendirme yer alır.",
     })
+  );
+}
+
+// Okulda işlenen konular planın tekrar bloğu kaynağıdır: kısa özet + giriş bağlantısı
+function okulKarti(okul) {
+  const dersler = okul.bugun_dersleri || [];
+  const islenen = (okul.islenen || []).length;
+  const dersMetni = dersler.length ? dersler.map((d) => d.ad).join(" · ") : "okul dersi yok";
+  return h(
+    "section",
+    { class: "kart" },
+    h(
+      "div",
+      { class: "kart-baslik", style: { alignItems: "center", flexWrap: "wrap" } },
+      h(
+        "div",
+        {},
+        h("h2", { text: "Okulda işlenen konular" }),
+        h("p", {
+          text: `${okul.gun_adi}: ${dersMetni} · ${
+            islenen
+              ? `${islenen} konu bugünün tekrar ve pekiştirme bloklarında`
+              : "bugün için henüz konu girilmedi"
+          }`,
+        })
+      ),
+      h(
+        "div",
+        { style: { display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" } },
+        h("a", { class: "dugme kucuk", href: "#/okul" }, ikon("okul", 15), "Bugünün konularını gir"),
+        h("a", { class: "dugme ikincil kucuk", href: "#/okul" }, "Haftalık ders programı")
+      )
+    )
   );
 }
 

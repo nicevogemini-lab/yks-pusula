@@ -32,6 +32,7 @@ SAYFA_YETKI: dict[str, set[str]] = {
     "panel": set(TUM_ROLLER),
     "mufredat": set(TUM_ROLLER),
     "plan": set(TUM_ROLLER),
+    "okul": set(TUM_ROLLER),
     "analiz": set(TUM_ROLLER),
     "koc": set(TUM_ROLLER),
     "deneme": {"yonetici", "veli"},

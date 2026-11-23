@@ -5,9 +5,10 @@ platformu. Öğrencinin alanı (Sayısal / Eşit Ağırlık / Sözel), sınıf d
 mezun) ve hedefi doğrultusunda günlük çalışma planı üretir; deneme sonuçlarını
 analiz eder; yapay zekâ koçuyla kişisel rehberlik verir.
 
-> Sürüm 3.2 — canlıda çalışıyor (Render + Neon PostgreSQL). Müfredat haritası,
+> Sürüm 3.3 — canlıda çalışıyor (Render + Neon PostgreSQL). Müfredat haritası,
 > plan üretimi, deneme analizi, koç sohbeti, yönetici için müfredat düzenleme,
-> kullanıcı yönetimi, kendi şifresini değiştirme ve bulut yedekleme.
+> kullanıcı yönetimi, kendi şifresini değiştirme, bulut yedekleme ve **okul ders
+> programı + okulda işlenen konuların tekrarı**.
 
 ## Neden bu kurgu
 
@@ -103,7 +104,8 @@ kayar. Hedef sıralama boş bırakılırsa 100.000 eşdeğeri kullanılır ve ar
 | --- | --- |
 | Panel | Günlük özet, **hedef sıralama ve gereken netler**, öncelikli konular, haftalık çalışma, ders bazlı ilerleme |
 | Müfredat | Ders → konu listesi; durum (başlanmadı / çalışılıyor / tamam / tekrar) ve 1-5 özgüven puanı; **yönetici ders ve konu ekleyip düzenleyip kaldırabilir** (elle yapılan değişiklikler açılıştaki gömülü müfredat güncellemesiyle ezilmez) |
-| Plan | Günlük / haftalık / aylık program; açık konu önceliği, **her gün matematik + paragraf**, aylık takvimde cumartesi deneme, pazar tekrar |
+| Plan | Günlük / haftalık / aylık program; açık konu önceliği, **her gün matematik + paragraf**, aylık takvimde cumartesi deneme, pazar tekrar, **okulda işlenen konuların tekrar ve pekiştirme blokları** |
+| Ders Programı | **11. ve 12. sınıf haftalık okul çizelgesi** (5 gün × 8 ders saati, hazır şablon veya elle), **bugün okulda işlenen konuların girişi**, son günlerin konu geçmişi |
 | Denemeler | TYT ve AYT deneme girişi, canlı net hesabı, **hedefe kalan net**, tahmini puan, **konu bazlı açık analizi**, **yapay zekâ değerlendirmesi ve deneme takvimi** |
 | Yapay Zekâ Koçu | Kişisel sohbet + beceri temelli soru üretimi; hedef sıralamaya göre ders ve program önerisi |
 | Ayarlar | Profil, **hedef sıralama (planı belirler)**, Gemini anahtarı, veritabanı yedeği — öğrenci profili kartı dışındaki bölümler yalnız yöneticide |
@@ -142,6 +144,30 @@ açıklar" tablosu yalnız **konuya özgü kanıtı** olan satırları gösterir
 işaretlenen yanlış ya da en az 4 soruluk çalışma günlüğü. Ders ortalamasından
 türetilen tahmin konu ayrımı taşımadığı için listeye girmez; bu, tablonun
 "her konu açık" görünmesini engeller.
+
+### Okul ders programı ve işlenen konuların tekrarı
+
+Program artık okulu görüyor. **Ders Programı** sayfasında 11. veya 12. sınıf
+haftalık çizelgesi (5 gün × 8 ders saati) hazır şablonla yüklenir, sonra hücre
+hücre okulun gerçek programına göre düzeltilir. Çizelge hücresi YKS ders kodu
+değil **okul dersi** tutar: beden eğitimi, İngilizce ve etüt de görünür ama konu
+listesi üretmez; matematik bir hücrede ise hem TYT hem AYT matematik konuları
+listelenir.
+
+Aynı sayfada **bugün okulda işlenen konular** işaretlenir
+(`POST /api/profil/{id}/islenen`). Kayıt üç şeyi yapar:
+
+1. Konu `calisiliyor` durumuna geçer, son çalışma bugün olur, tekrar tarihi
+   yarına kurulur.
+2. Günlük plan tazelenir; konu **aynı gün "Tekrar ve pekiştirme"** bloğu
+   (25 dk) olarak günün ilk saatlerine yazılır.
+3. Aralıklı tekrar takvimi işler: aynı konu **ertesi gün ("dün okulda
+işlendi"), 3. ve 7. günde ("aralıklı tekrar")** yeniden plana girer.
+
+Okulda işlenmiş konu yeni konu bloğu olarak ikinci kez atanmaz; o günün kotası
+diğer açık konulara kayar. Okul tekrarı günün sabit matematik/paragraf
+bloklarından önce gelir ve gün akışı saatlerine (okul, öğün, mola, uyku) göre
+yerleştirilir. Bir güne en fazla üç okul tekrarı bloğu yazılır.
 
 ### Günlük matematik ve paragraf
 

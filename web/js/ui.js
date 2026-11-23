@@ -37,6 +37,7 @@ const IKONLAR = {
   kalem: '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z"/>',
   hedef: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.4"/>',
   pusula: '<path d="M12 2l8 5v10l-8 5-8-5V7z"/><path d="M12 8l3 7-3-1.6L9 15z"/>',
+  okul: '<path d="M3 21h18"/><path d="M5 21V9l7-4 7 4v12"/><path d="M9 21v-6h6v6"/>',
 };
 
 export function ikon(ad, boyut = 18) {

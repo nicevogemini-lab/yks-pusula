@@ -25,7 +25,8 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from ..data import alan_ders_kodlari
-from ..models import Ders, Konu, KonuDurum, PlanItem, Profil
+from ..models import Ders, IslenenKonu, Konu, KonuDurum, PlanItem, Profil
+from . import ders_programi as okul_programi
 from . import sinif as sinif_servisi
 from .analiz import konu_tablosu
 from .hedef import ders_agirliklari, hedef_ozeti
@@ -49,6 +50,10 @@ EK_BLOK_ESIGI_DK = 15
 EK_BLOK_SAYISI = 3
 # Ek bloklar günlük hedefi en fazla bu kadar dakika aşabilir
 EK_BLOK_PAYI_DK = 30
+# Okulda işlenen bir konunun tekrar/pekiştirme bloğuna ayrılan süre
+OKUL_TEKRAR_DK = 25
+# Bir güne yazılabilecek en fazla okul tekrarı bloğu
+OKUL_TEKRAR_AZAMI = 3
 
 
 def _durum_haritasi(db: Session, profil_id: int) -> dict[int, KonuDurum]:
@@ -262,6 +267,80 @@ def _ders_kuyrugu(kuyruk: list[Konu]) -> dict[str, list[Konu]]:
     return gruplar
 
 
+def _okul_konulari(
+    db: Session, profil: Profil, tarih: date
+) -> list[tuple[Konu, int]]:
+    """Okulda işlenen ve o gün tekrar edilecek konular: (konu, kaç gün önce).
+
+    Aralıklı tekrar takvimi ``ders_programi.TEKRAR_GUNLERI``: konu işlendiği
+    gün (0), ertesi gün (1), üçüncü ve yedinci günde yeniden öne gelir. Aynı
+    gün işlenen konu listenin başındadır.
+    """
+    gunler = {tarih - timedelta(days=k): k for k in okul_programi.TEKRAR_GUNLERI}
+    satirlar = list(
+        db.execute(
+            select(IslenenKonu)
+            .where(
+                IslenenKonu.profil_id == profil.id,
+                IslenenKonu.tarih.in_(list(gunler)),
+            )
+            .order_by(IslenenKonu.tarih.desc(), IslenenKonu.id)
+        ).scalars()
+    )
+    if not satirlar:
+        return []
+    konular = {
+        k.id: k
+        for k in db.execute(
+            select(Konu).where(Konu.id.in_([s.konu_id for s in satirlar]))
+        ).scalars()
+    }
+    return [
+        (konular[s.konu_id], gunler[s.tarih])
+        for s in satirlar
+        if s.konu_id in konular
+    ]
+
+
+def _okul_tekrarlari(
+    db: Session,
+    profil: Profil,
+    tarih: date,
+    sira: int,
+    konular: list[tuple[Konu, int]],
+) -> tuple[int, int]:
+    """Okulda görülen konuları o günün ilk bloklarına yazar.
+
+    Tekrar okulun hemen ardından yapılır: aynı gün işlenen konu
+    "tekrar ve pekiştirme", önceki günler "tekrar", daha eskiler
+    "aralıklı tekrar" olarak adlandırılır.
+    """
+    eklenen = 0
+    for konu, once in konular[:OKUL_TEKRAR_AZAMI]:
+        if once == 0:
+            baslik = f"Tekrar ve pekiştirme: {konu.ad} (bugün okulda işlendi)"
+        elif once == 1:
+            baslik = f"Tekrar: {konu.ad} (dün okulda işlendi)"
+        else:
+            baslik = f"Aralıklı tekrar: {konu.ad} ({once} gün önce okulda işlendi)"
+        sira += 1
+        db.add(
+            PlanItem(
+                profil_id=profil.id,
+                tarih=tarih,
+                ders_kod=konu.ders_kod,
+                konu_id=konu.id,
+                baslik=baslik,
+                tur="tekrar",
+                sure_dk=OKUL_TEKRAR_DK,
+                durum="bekliyor",
+                sira=sira,
+            )
+        )
+        eklenen += 1
+    return eklenen, sira
+
+
 def _sabit_blok_konulari(
     db: Session, kuyruk: list[Konu]
 ) -> dict[str, list[Konu] | Konu | None]:
@@ -293,13 +372,21 @@ def _gunluk_secim(
     agirliklar: dict[str, float],
     adet: int,
     paylar: dict[str, float],
+    haric: set[int] | None = None,
 ) -> list[Konu]:
     """Hedef payına göre günlük konu seçimi (açık kotalı adil dağıtım).
 
     Her ders gün başına ``payı × adet`` kadar alacak biriktirir; her seçim
     1 birim harcar. Böylece hafta boyunca dersler hedef oranında temsil
     edilir ve düşük paylı dersler tamamen dışlanmaz.
+
+    ``haric`` okulda işlenmiş konulardır: bunlar yeni konu bloğu olarak
+    yazılmaz, günün tekrar/pekiştirme bloklarında yer alır.
     """
+    if haric:
+        for kod in list(gruplar):
+            if any(k.id in haric for k in gruplar[kod]):
+                gruplar[kod] = [k for k in gruplar[kod] if k.id not in haric]
     uygun = {kod: liste for kod, liste in gruplar.items() if liste}
     if not uygun or adet <= 0:
         return []
@@ -506,23 +593,35 @@ def gunluk_plan_uret(
     sabit = _sabit_blok_konulari(db, kuyruk)
     yanlislar = _deneme_yanlis_haritasi(db, profil)
     paylar: dict[str, float] = {}
+    haric: set[int] = set()
     eklenen = 0
 
     for gun in range(gun_sayisi):
         tarih = baslangic + timedelta(days=gun)
         _, ek, kalan_hedef, sira = _gun_durumu(db, profil, tarih)
-        if ek and not sigiyor_mu(ek, gun_cercevesi(tarih, profil)["pencereler"]):
+        # Okulda işlenen konular: günün ilk bloklarına tekrar/pekiştirme yazılır
+        okul_konulari = _okul_konulari(db, profil, tarih)
+        okul_ek = [OKUL_TEKRAR_DK] * min(len(okul_konulari), OKUL_TEKRAR_AZAMI)
+        haric.update(k.id for k, _ in okul_konulari)
+        if ek and not sigiyor_mu(
+            ek + okul_ek, gun_cercevesi(tarih, profil)["pencereler"]
+        ):
             # Günün tamamlanmış maddeleri pencereleri doldurmuşsa yeni madde yazılmaz
             continue
         konu_sayisi, konu_dk, soru_dk, tekrar_dk, mat_dk, par_dk = _gun_olculeri(
-            profil, tarih, ek=ek, hedef_dk=kalan_hedef
+            profil,
+            tarih,
+            ek=ek + okul_ek,
+            hedef_dk=kalan_hedef - sum(okul_ek),
         )
-        secilen = _gunluk_secim(gruplar, agirliklar, konu_sayisi, paylar)
+        secilen = _gunluk_secim(gruplar, agirliklar, konu_sayisi, paylar, haric)
         if not secilen:
             # Konu havuzu tükendi: tekrar çalışması için baştan doldur
             gruplar = _ders_kuyrugu(kuyruk)
-            secilen = _gunluk_secim(gruplar, agirliklar, konu_sayisi, paylar)
+            secilen = _gunluk_secim(gruplar, agirliklar, konu_sayisi, paylar, haric)
 
+        yazilan, sira = _okul_tekrarlari(db, profil, tarih, sira, okul_konulari)
+        eklenen += yazilan
         yazilan, sira = _sabit_bloklari_ekle(
             db, profil, tarih, sira, sabit, mat_dk, par_dk, gun
         )
@@ -770,6 +869,7 @@ def aylik_plan_uret(
     sabit = _sabit_blok_konulari(db, kuyruk)
     yanlislar = _deneme_yanlis_haritasi(db, profil)
     paylar: dict[str, float] = {}
+    haric: set[int] = set()
     eklenen = 0
 
     def ekle(
@@ -831,7 +931,13 @@ def aylik_plan_uret(
         haftalik_var = pazar and any(
             (m.baslik or "").startswith("Haftalık tekrar") for m in mevcut
         )
-        ek_sureler = ([haftalik_dk] if pazar and not haftalik_var else []) + ek
+        # Okulda işlenen konular o günün ilk işi: tekrar/pekiştirme bloğu
+        okul_konulari = _okul_konulari(db, profil, tarih)
+        okul_ek = [OKUL_TEKRAR_DK] * min(len(okul_konulari), OKUL_TEKRAR_AZAMI)
+        haric.update(k.id for k, _ in okul_konulari)
+        ek_sureler = (
+            ([haftalik_dk] if pazar and not haftalik_var else []) + ek + okul_ek
+        )
         if ek and not sigiyor_mu(ek_sureler, gun_cercevesi(tarih, profil)["pencereler"]):
             continue
         # Ölçüler günün kendi pencerelerine göre belirlenir (pazar günü ek blok)
@@ -840,7 +946,9 @@ def aylik_plan_uret(
             tarih,
             ek=ek_sureler,
             adet_farki=-1 if pazar else 0,
-            hedef_dk=kalan_hedef - (haftalik_dk if pazar and not haftalik_var else 0),
+            hedef_dk=kalan_hedef
+            - sum(okul_ek)
+            - (haftalik_dk if pazar and not haftalik_var else 0),
         )
         if pazar and not haftalik_var:
             sira += 1
@@ -854,10 +962,14 @@ def aylik_plan_uret(
 
         # Pazar günü tekrar bloğu ayrıldığı için bir konu eksik alınır
         adet = max(1, konu_sayisi - 1) if pazar else konu_sayisi
-        secilen = _gunluk_secim(gruplar, agirliklar, adet, paylar)
+        secilen = _gunluk_secim(gruplar, agirliklar, adet, paylar, haric)
         if not secilen:
             gruplar = _ders_kuyrugu(kuyruk)
-            secilen = _gunluk_secim(gruplar, agirliklar, adet, paylar)
+            secilen = _gunluk_secim(gruplar, agirliklar, adet, paylar, haric)
+
+        # Okulda işlenen konular tekrar ve pekiştirme olarak ilk sıraya yazılır
+        yazilan, sira = _okul_tekrarlari(db, profil, tarih, sira, okul_konulari)
+        eklenen += yazilan
 
         # Her gün matematik ve paragraf soruları
         yazilan, sira = _sabit_bloklari_ekle(
