@@ -1,28 +1,13 @@
 name: Uyanik tut
 
-# Render ucretsiz instance 15 dakika trafik almazsa uyur. Bu is akisi
-# 02:00-22:59 UTC (05:00-01:55 Istanbul) arasinda 5 dakikada bir saglik
-# kontrolu yapar. Gece uyumasi bilinclidir: aylik 750 saat sinirini asmamak
-# icin 01:55-05:00 arasi ping atilmaz.
 on:
   schedule:
-    - cron: "*/5 2-22 * * *"
+    - cron: "*/5 2-22 * * *"   # 05:00-01:55 (Istanbul) arasi 5 dakikada bir
   workflow_dispatch:
 
 jobs:
   ping:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
     steps:
       - name: Saglik kontrolu
-        run: |
-          for deneme in 1 2 3; do
-            kod=$(curl -s -o /dev/null -w "%{http_code}" --max-time 90 \
-              https://yks-pusula.onrender.com/api/saglik || true)
-            echo "deneme $deneme: HTTP $kod"
-            if [ "$kod" = "200" ]; then
-              exit 0
-            fi
-            sleep 20
-          done
-          echo "Servis uyuyor ya da gecici hata; sonraki tur yeniden deneyecek."
+        run: curl -fsS --max-time 90 https://yks-pusula.onrender.com/api/saglik
