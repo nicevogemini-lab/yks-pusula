@@ -319,6 +319,7 @@ def ozet(db: Session, profil: Profil, tarih: date | None = None) -> dict:
         "profil_id": profil.id,
         "sinif": profil.sinif,
         "sinif_etiketi": profil.sinif_etiketi,
+        "okul_var": bool(profil.sinif),
         "alan": profil.alan,
         "alan_etiketi": profil.alan_etiketi,
         "tarih": tarih.isoformat(),

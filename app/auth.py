@@ -476,7 +476,7 @@ def _sayfa(baslik: str, icerik: str, hata: str = "") -> str:
         <li>{_ONAY}<span><b>Veli ve öğrenci takibi:</b> sınıf düzeyine göre kurgulanan
           program, veliye özel görünüm.</span></li>
       </ul>
-      <p class="imza">A-KEY Yazılım · YKS Pusula v3.3</p>
+      <p class="imza">A-KEY Yazılım · YKS Pusula v3.4</p>
     </section>
 
     <main class="kart">

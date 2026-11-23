@@ -303,6 +303,39 @@ def model_cagir(db: Session, sistem: str, mesaj: str) -> dict:
 
 
 # --------------------------------------------------------------------------
+# Yapılandırılmış (JSON) yanıt: plan analizi gibi sayısal kararlar
+# --------------------------------------------------------------------------
+def json_cagir(db: Session, sistem: str, mesaj: str) -> dict:
+    """Modelden JSON nesnesi ister.
+
+    Dönen sözlük ``{ok, veri, kaynak, model}`` ya da hata durumunda
+    ``{ok: False, sebep, model}`` alanlarını taşır. Çağıran taraf kendi
+    doğrulamasını yapar; burada yalnızca geçerli bir JSON nesnesi olması
+    garanti edilir. İstisna fırlatılmaz.
+    """
+    anahtar, model = anahtar_getir(db)
+    if not anahtar:
+        return {"ok": False, "sebep": "anahtar yok", "model": model}
+    try:
+        metin = _gemini_cagir(
+            anahtar,
+            model,
+            sistem,
+            [{"rol": "kullanici", "icerik": mesaj}],
+            json_modu=True,
+        )
+    except (httpx.HTTPError, RuntimeError) as hata:
+        return {"ok": False, "sebep": _hata_notu(hata), "model": model}
+    try:
+        veri = json.loads(metin)
+    except json.JSONDecodeError:
+        return {"ok": False, "sebep": "Model geçerli JSON üretmedi", "model": model}
+    if not isinstance(veri, dict):
+        return {"ok": False, "sebep": "Model JSON nesnesi üretmedi", "model": model}
+    return {"ok": True, "veri": veri, "model": model, "kaynak": "gemini"}
+
+
+# --------------------------------------------------------------------------
 # Bağlantı testi (anahtar doğrulama)
 # --------------------------------------------------------------------------
 def baglanti_test(anahtar: str, model: str) -> dict:

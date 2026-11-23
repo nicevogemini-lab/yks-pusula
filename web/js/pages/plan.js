@@ -10,15 +10,19 @@ export const alt = "Günlük, haftalık ve aylık program · konu ağırlığın
 let donem = "gunluk";
 
 export async function ciz(kap, durum) {
-  const [veri, hedef, okul] = await Promise.all([
+  const [veri, hedef, okul, analiz] = await Promise.all([
     donemVerisi(durum.profil.id),
     api.get(`/api/hedef/${durum.profil.id}`),
-    // Okul çizelgesi/konu girişi yoksa plan yine çizilir
-    api.get(`/api/profil/${durum.profil.id}/ders-programi`).catch(() => null),
+    // Mezun profilde okul yok: çizelge kartı ve çağrısı atlanır
+    durum.profil.sinif
+      ? api.get(`/api/profil/${durum.profil.id}/ders-programi`).catch(() => null)
+      : Promise.resolve(null),
+    api.get(`/api/plan/${durum.profil.id}/analiz`).catch(() => null),
   ]);
 
   kap.replaceChildren(
     ustKart(veri, durum, hedef),
+    analizKarti(analiz, durum),
     ...(donem === "gunluk" && okul ? [okulKarti(okul)] : []),
     hedefKarti(hedef, {
       kompakt: true,
@@ -52,7 +56,11 @@ function ustKart(veri, durum, hedef) {
         ? `/api/plan/${durum.profil.id}/aylik-uret?hafta=4`
         : `/api/plan/${durum.profil.id}/uret?gun=7`;
       const yanit = await api.post(yol);
-      bildir(`${yanit.eklenen} plan maddesi oluşturuldu.`);
+      // Analiz üretilemediyse plan yine kurulur; nedeni kullanıcıya yazılır
+      const aiNotu = yanit.analiz?.ok
+        ? "yapay zekâ analizi uygulandı"
+        : `analiz yok${yanit.analiz?.sebep ? `: ${yanit.analiz.sebep}` : ""}`;
+      bildir(`${yanit.eklenen} plan maddesi · ${aiNotu}`);
       await durum.yenile();
     } catch (hata) {
       bildir(hata.message, "hata");
@@ -64,11 +72,15 @@ function ustKart(veri, durum, hedef) {
   const cerceve = veri.zaman_cercevesi;
   // Sınıf kapsamı: kapsam dışı konular programa hiç girmez
   const kapsamYazi = veri.kapsam ? ` · ${veri.kapsam.etiket}` : "";
+  // Mezun profilde okul çizelgesi yok: plan TYT/AYT konularına göre kurulur
+  const mezunYazi = durum.profil.sinif
+    ? ""
+    : " · mezun: okul çizelgesi kullanılmaz, plan TYT/AYT konularına göre kurulur";
   const altYazi = aylik
-    ? `${veri.hafta_sayisi} hafta · ${tarihTr(veri.baslangic)} – ${tarihTr(veri.bitis)} · haftalık hedef +${hedef.haftalik_gereken_net} net${kapsamYazi}`
+    ? `${veri.hafta_sayisi} hafta · ${tarihTr(veri.baslangic)} – ${tarihTr(veri.bitis)} · haftalık hedef +${hedef.haftalik_gereken_net} net${kapsamYazi}${mezunYazi}`
     : `Günlük hedef ${dakikaMetni(durum.profil.gunluk_hedef_dk)} · haftalık hedef +${hedef.haftalik_gereken_net} net${
         cerceve ? ` · gün ${cerceve.uyanma}–${cerceve.yatis}` : ""
-      }${kapsamYazi}`;
+      }${kapsamYazi}${mezunYazi}`;
 
   return h(
     "section",
@@ -87,9 +99,153 @@ function ustKart(veri, durum, hedef) {
     sekmeler(durum),
     h("p", {
       class: "ipucu",
-      text: "Program üç kaynağa göre kurulur: deneme sonuçları (yanlış çıkan konu öne alınır), YKS kazanım ağırlığı ve PDR önerileri (8 saat uyku, en fazla 50 dakikalık bloklar, 10 dakika mola, okul sonrası geçiş molası, haftada bir yarım gün serbest). Aylık görünümde hafta içi konu blokları, cumartesi gerçek saatinde deneme, pazar tekrar ve sosyal-duygusal öz değerlendirme yer alır.",
+      text: "Program üç kaynağa göre kurulur: hedef sıralamanın gerektirdiği ders netleri, deneme sonuçları (sorulan soru sayısı ve net), konu ağırlıkları. Yapay zekâ analizi bu üçünü Maarif Modeli becerileri ve kalan günle birlikte yorumlayıp ders paylarını ve odak konuları belirler; analiz yoksa plan aynı kurallarla deterministik hazırlanır. PDR ilkeleri (8 saat uyku, en fazla 50 dakikalık bloklar, 10 dakika mola, okul sonrası geçiş molası, haftada bir yarım gün serbest) her durumda uygulanır.",
     })
   );
+}
+
+// Yapay zekâ analizi: ders payları, odak konular ve gerekçeler
+function analizKarti(sunum, durum) {
+  const kart = h("section", { class: "kart" });
+  const analiz = sunum?.analiz || null;
+  const aiVar = Boolean(sunum?.ai);
+  const dugme = h(
+    "button",
+    { class: "dugme kucuk", type: "button", disabled: !aiVar },
+    ikon("yildiz", 15),
+    analiz ? "Analizi yenile" : "Yapay zekâ ile analiz et"
+  );
+  dugme.addEventListener("click", async () => {
+    dugme.disabled = true;
+    dugme.textContent = "Analiz ediliyor…";
+    try {
+      const yanit = await api.post(`/api/plan/${durum.profil.id}/analiz`);
+      if (yanit.ok) {
+        bildir(
+          `Analiz hazır · ${(yanit.paylar || []).length} ders payı, ${(yanit.odak || []).length} odak konu plana işlendi.`
+        );
+        await durum.yenile();
+        return;
+      }
+      bildir(yanit.sebep || "Analiz üretilemedi.", "hata");
+      dugme.disabled = false;
+      dugme.textContent = analiz ? "Analizi yenile" : "Yapay zekâ ile analiz et";
+    } catch (hata) {
+      bildir(hata.message, "hata");
+      dugme.disabled = false;
+      dugme.textContent = analiz ? "Analizi yenile" : "Yapay zekâ ile analiz et";
+    }
+  });
+
+  const zaman = analiz?.zaman ? String(analiz.zaman).slice(0, 16).replace("T", " ") : "";
+  const altMetin = analiz
+    ? `${analiz.model || "Gemini"} · ${zaman}${analiz.kapsam ? ` · ${analiz.kapsam}` : ""}`
+    : aiVar
+      ? "Hedef net açıkları, deneme soru/net sayıları ve konu ağırlıkları analiz edilerek plan payları belirlenir."
+      : "Yapay zekâ anahtarı tanımlı değil; plan hedef net açıklarına göre deterministik kurallarla hazırlanıyor.";
+  // Ayarlar yalnız yönetici ve velide görünür; öğrenciye boş bağlantı gösterilmez
+  const ayarLinki =
+    !aiVar && durum.kullanici?.rol !== "ogrenci"
+      ? h("a", { class: "dugme ikincil kucuk", href: "#/ayarlar" }, "Ayarlar")
+      : null;
+
+  kart.append(
+    h(
+      "div",
+      { class: "kart-baslik", style: { alignItems: "center", flexWrap: "wrap" } },
+      h("div", {}, h("h2", { text: "Yapay zekâ plan analizi" }), h("p", { text: altMetin })),
+      h(
+        "div",
+        { style: { display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" } },
+        sunum?.taze ? h("span", { class: "rozet basari", text: "güncel" }) : null,
+        ayarLinki,
+        dugme
+      )
+    )
+  );
+
+  if (!aiVar) {
+    kart.append(
+      h("p", {
+        class: "ipucu",
+        text: "Yönetici, Ayarlar → Yapay Zekâ bölümüne Gemini anahtarı ekleyince model; ders paylarını, odak konuları ve haftalık stratejiyi kendi analiz eder. Anahtar yokken plan yine üretilir: hedef net açıkları, denemede sorulan soru sayısı ve konu ağırlıkları birlikte hesaplanır.",
+      })
+    );
+    return kart;
+  }
+
+  if (!analiz) {
+    kart.append(
+      h("p", {
+        class: "ipucu",
+        text: "Henüz analiz yok. \"Yapay zekâ ile analiz et\" düğmesi hedef sıralamanın gerektirdiği netleri, deneme sonuçlarını ve konu ağırlıklarını yorumlar; ardından planı yeniden üretince paylar ve odak konular uygulanır.",
+      })
+    );
+    return kart;
+  }
+
+  if (analiz.ozet) kart.append(h("p", { class: "analiz-ozet", text: analiz.ozet }));
+
+  if (analiz.paylar?.length) {
+    kart.append(
+      h("div", { class: "analiz-bolum" }, h("b", { text: "Ders payları (günlük süre)" })),
+      h(
+        "div",
+        { class: "analiz-paylar" },
+        analiz.paylar.map((pay) =>
+          h(
+            "span",
+            { class: "analiz-pay", title: `${pay.sinav} · %${pay.pay}` },
+            h("span", { class: "nokta", style: { background: pay.renk } }),
+            h("b", { text: `%${pay.pay}` }),
+            h("span", { text: pay.ad })
+          )
+        )
+      )
+    );
+  }
+
+  if (analiz.odak?.length) {
+    kart.append(
+      h("div", { class: "analiz-bolum" }, h("b", { text: "Önce çalışılacak konular" })),
+      h(
+        "div",
+        { class: "analiz-odak" },
+        analiz.odak.map((konu) =>
+          h(
+            "div",
+            { class: "analiz-odak-satir" },
+            h("b", { text: konu.konu }),
+            h("small", { text: konu.ders }),
+            konu.gerekce ? h("p", { text: konu.gerekce }) : null
+          )
+        )
+      )
+    );
+  }
+
+  if (analiz.strateji?.length) {
+    kart.append(
+      h("div", { class: "analiz-bolum" }, h("b", { text: "Haftalık strateji" })),
+      h(
+        "ul",
+        { class: "analiz-liste" },
+        analiz.strateji.map((satir) => h("li", { text: satir }))
+      )
+    );
+  }
+
+  if (analiz.riskler?.length) {
+    kart.append(
+      h(
+        "div",
+        { class: "analiz-riskler" },
+        analiz.riskler.map((risk) => h("span", { class: "rozet uyari", text: risk }))
+      )
+    );
+  }
+
+  return kart;
 }
 
 // Okulda işlenen konular planın tekrar bloğu kaynağıdır: kısa özet + giriş bağlantısı

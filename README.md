@@ -5,10 +5,11 @@ platformu. Öğrencinin alanı (Sayısal / Eşit Ağırlık / Sözel), sınıf d
 mezun) ve hedefi doğrultusunda günlük çalışma planı üretir; deneme sonuçlarını
 analiz eder; yapay zekâ koçuyla kişisel rehberlik verir.
 
-> Sürüm 3.3 — canlıda çalışıyor (Render + Neon PostgreSQL). Müfredat haritası,
+> Sürüm 3.4 — canlıda çalışıyor (Render + Neon PostgreSQL). Müfredat haritası,
 > plan üretimi, deneme analizi, koç sohbeti, yönetici için müfredat düzenleme,
-> kullanıcı yönetimi, kendi şifresini değiştirme, bulut yedekleme ve **okul ders
-> programı + okulda işlenen konuların tekrarı**.
+> kullanıcı yönetimi, kendi şifresini değiştirme, bulut yedekleme, **okul ders
+> programı + okulda işlenen konuların tekrarı** ve **yapay zekâ plan analizi
+> (ders payları + odak konular)**.
 
 ## Neden bu kurgu
 
@@ -104,8 +105,8 @@ kayar. Hedef sıralama boş bırakılırsa 100.000 eşdeğeri kullanılır ve ar
 | --- | --- |
 | Panel | Günlük özet, **hedef sıralama ve gereken netler**, öncelikli konular, haftalık çalışma, ders bazlı ilerleme |
 | Müfredat | Ders → konu listesi; durum (başlanmadı / çalışılıyor / tamam / tekrar) ve 1-5 özgüven puanı; **yönetici ders ve konu ekleyip düzenleyip kaldırabilir** (elle yapılan değişiklikler açılıştaki gömülü müfredat güncellemesiyle ezilmez) |
-| Plan | Günlük / haftalık / aylık program; açık konu önceliği, **her gün matematik + paragraf**, aylık takvimde cumartesi deneme, pazar tekrar, **okulda işlenen konuların tekrar ve pekiştirme blokları** |
-| Ders Programı | **11. ve 12. sınıf haftalık okul çizelgesi** (5 gün × 8 ders saati, hazır şablon veya elle), **bugün okulda işlenen konuların girişi**, son günlerin konu geçmişi |
+| Plan | Günlük / haftalık / aylık program; **yapay zekâ plan analizi** (ders payları, odak konular, strateji), açık konu önceliği, **her gün matematik + paragraf**, aylık takvimde cumartesi deneme, pazar tekrar, **okulda işlenen konuların tekrar ve pekiştirme blokları** |
+| Ders Programı | **Yalnız 11. ve 12. sınıf** (mezun profilinde menüde görünmez): haftalık okul çizelgesi (5 gün × 8 ders saati, hazır şablon veya elle), **bugün okulda işlenen konuların girişi**, son günlerin konu geçmişi |
 | Denemeler | TYT ve AYT deneme girişi, canlı net hesabı, **hedefe kalan net**, tahmini puan, **konu bazlı açık analizi**, **yapay zekâ değerlendirmesi ve deneme takvimi** |
 | Yapay Zekâ Koçu | Kişisel sohbet + beceri temelli soru üretimi; hedef sıralamaya göre ders ve program önerisi |
 | Ayarlar | Profil, **hedef sıralama (planı belirler)**, Gemini anahtarı, veritabanı yedeği — öğrenci profili kartı dışındaki bölümler yalnız yöneticide |
@@ -168,6 +169,49 @@ Okulda işlenmiş konu yeni konu bloğu olarak ikinci kez atanmaz; o günün kot
 diğer açık konulara kayar. Okul tekrarı günün sabit matematik/paragraf
 bloklarından önce gelir ve gün akışı saatlerine (okul, öğün, mola, uyku) göre
 yerleştirilir. Bir güne en fazla üç okul tekrarı bloğu yazılır.
+
+**Mezun profilde okul yoktur.** Sınıfı "Mezun" olan öğrencide Ders Programı
+sayfası menüden kalkar (`PUT /api/profil/{id}/ders-programi` ve
+`POST /api/profil/{id}/islenen` 400 döner); program TYT ve AYT konularına göre
+kurulur. Kapsam sınıf düzeyine bağlıdır ve her yerde aynı süzgeç işler:
+11. sınıf → 9-11, 12. sınıf → 9-12, mezun → tüm TYT/AYT konuları. Kapsam dışı
+konu plana, analiz tablosuna ve konu seçeneklerine girmez.
+
+### Yapay zekâ plan analizi (ders payı ve odak konular)
+
+Plan sayfasının üstündeki **Yapay zekâ plan analizi** kartı, planı üretmeden
+önce kararı modele verir. Modele tek JSON'da şu kanıtlar gider:
+
+1. **Hedef sıralama → gereken net** ve ders bazında hedef/mevcut/açık net.
+2. **Deneme kanıtı**: derslerin sınavdaki soru sayısı, deneme neti ve başarı
+   yüzdesi, konu bazında deneme yanlışları.
+3. **Konu ağırlığı**: konunun beklenen soru sayısı, ağırlık payı, başarı oranı
+   ve durumu (en yüksek etkin puanlı 30 aday).
+4. **Maarif Modeli becerileri**: konunun kavramsal beceri / alan becerisi /
+   sosyal-duygusal / okuryazarlık etiketleri; istem 2028'in beceri ve bağlam
+   temelli soru yapısını, ezber yerine uygulamayı gözetir.
+5. **Okul bağlamı**: 11/12. sınıfta bugünün dersleri ve son işlenen konular;
+   mezunda "okul yok" notu.
+
+Model `ders_paylari` (toplamı 100), en fazla 8 `odak_konular` (gerekçeli),
+`strateji` ve `riskler` döndürür. Yanıt doğrulanır (geçersiz ders/konu kodu
+atılır, paylar 100'e çekilir) ve `Ayar` tablosunda `plan_analizi_{profil_id}`
+anahtarıyla saklanır; 12 saat tazelik ömrü vardır, **Analizi yenile** düğmesi
+zorla yeniler.
+
+Plan motoru analizi iki yerden kullanır:
+
+- **Ders kotası harmanı**: `plan_agirliklari` hesaplanan ağırlığın %40'ı ile
+  modelin payının %60'ını birleştirir, sonra matematik katsayısı (1.35)
+  uygulanır.
+- **Odak konu öne alma**: analizdeki konu `oncelikli_konular` içinde `+6` puan
+  alır; deneme yanlışı ve açık puanıyla birlikte günün ilk bloklarına girer.
+
+Anahtar yoksa, kota aşılırsa ya da model geçerli JSON üretmezse plan
+**deterministik kurallarla** üretilmeye devam eder; kart sebebi yazar ve
+Ayarlar'a bağlantı verir. Plan üretimi ve aylık üretim analizi kendiliğinden
+tazeler (`POST /api/plan/{id}/uret`, `POST /api/plan/{id}/aylik-uret`),
+sonuç `analiz` alanıyla döner.
 
 ### Günlük matematik ve paragraf
 

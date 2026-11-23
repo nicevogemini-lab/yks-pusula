@@ -54,6 +54,10 @@ EK_BLOK_PAYI_DK = 30
 OKUL_TEKRAR_DK = 25
 # Bir güne yazılabilecek en fazla okul tekrarı bloğu
 OKUL_TEKRAR_AZAMI = 3
+# Yapay zekâ analizinin odak konularına eklenen öncelik puanı
+AI_ODAK_PUANI = 6.0
+# Yapay zekâ ders paylarının deterministik hesapla harman oranı
+AI_PAY_ORANI = 0.6
 
 
 def _durum_haritasi(db: Session, profil_id: int) -> dict[int, KonuDurum]:
@@ -64,11 +68,30 @@ def _durum_haritasi(db: Session, profil_id: int) -> dict[int, KonuDurum]:
 
 
 def plan_agirliklari(db: Session, profil: Profil) -> dict[str, float]:
-    """Plan kotası için ders payları; matematik dersleri öne çıkarılır."""
-    agirliklar = ders_agirliklari(db, profil)
+    """Plan kotası için ders payları; yapay zekâ analiziyle harmanlanır.
+
+    Hesap payı (hedef net × açık oranı) her zaman temeldir. Yapay zekâ analizi
+    kaydı varsa modelin payları ``AI_PAY_ORANI`` ağırlığıyla karışır: kayıt
+    yoksa plan yalnız hedef netlerden kurulur. Matematik dersleri her iki
+    durumda da hafifçe öne çıkarılır.
+    """
+    hesaplanan = ders_agirliklari(db, profil)
+    # Döngüsel içe aktarmayı önlemek için modül burada yüklenir
+    from . import plan_analizi
+
+    ai_paylar = plan_analizi.paylari(db, profil)
+    if ai_paylar:
+        kodlar = set(hesaplanan) | set(ai_paylar)
+        harman = {
+            kod: AI_PAY_ORANI * ai_paylar.get(kod, 0.0)
+            + (1 - AI_PAY_ORANI) * hesaplanan.get(kod, 0.0)
+            for kod in kodlar
+        }
+    else:
+        harman = dict(hesaplanan)
     puanlar = {
         kod: deger * (MATEMATIK_KATSAYI if kod in MATEMATIK_DERSLER else 1.0)
-        for kod, deger in agirliklar.items()
+        for kod, deger in harman.items()
     }
     toplam = sum(puanlar.values()) or 1.0
     return {kod: deger / toplam for kod, deger in puanlar.items()}
@@ -95,6 +118,11 @@ def oncelikli_konular(db: Session, profil: Profil, limit: int = 40) -> list[tupl
     # Konu bazlı açık tablosu: denemede yanlış çıkan ya da başarısı düşük konu
     # etkin puanıyla öne geçer, program doğrudan açığa göre kurulur.
     satirlar = {s["id"]: s for s in konu_tablosu(db, profil)}
+
+    # Yapay zekâ analizinin odak konuları sıranın başına çekilir
+    from . import plan_analizi
+
+    odak = plan_analizi.odak_idleri(db, profil)
 
     # konu kodu -> id eşlemesi (ön koşul kontrolü için)
     kod_id = {k.kod: k.id for k in konular}
@@ -140,6 +168,10 @@ def oncelikli_konular(db: Session, profil: Profil, limit: int = 40) -> list[tupl
 
         # Güncel sınıfın konuları öne alınır (11. sınıfta 11. sınıf konuları +%20)
         puan *= sinif_servisi.oncelik_carpani(konu.sinif, profil.sinif)
+
+        # Yapay zekâ analizinin odak konusu listenin başına çekilir
+        if konu.id in odak:
+            puan += AI_ODAK_PUANI
 
         puanli.append((konu, puan))
 

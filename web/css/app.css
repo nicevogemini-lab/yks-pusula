@@ -1538,6 +1538,33 @@ ol.balon-liste { list-style: decimal outside; }
   .okul-secim { font-size: 11px; }
 }
 
+/* 8b) Yapay zekâ plan analizi ------------------------------ */
+.analiz-ozet { margin: 0 0 12px; font-size: 13.5px; color: #374151; line-height: 1.55; }
+.analiz-bolum { margin-top: 12px; }
+.analiz-bolum > b {
+  font-size: 11.5px; letter-spacing: .02em; color: var(--fume); text-transform: uppercase;
+}
+.analiz-paylar { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 7px; }
+.analiz-pay {
+  display: inline-flex; align-items: center; gap: 6px;
+  border: 1px solid var(--cizgi); border-radius: 999px; padding: 4px 10px;
+  font-size: 12px; background: #fbfcfe;
+}
+.analiz-pay b { color: var(--marka-koyu); }
+.analiz-odak { display: grid; gap: 8px; margin-top: 7px; }
+.analiz-odak-satir {
+  border: 1px solid var(--cizgi); border-left: 3px solid var(--marka);
+  border-radius: 10px; padding: 8px 11px;
+}
+.analiz-odak-satir b { font-size: 13px; }
+.analiz-odak-satir small { margin-left: 8px; font-size: 11.5px; color: #6b7280; }
+.analiz-odak-satir p { margin: 4px 0 0; font-size: 12.5px; color: #4b5563; }
+.analiz-liste {
+  margin: 7px 0 0; padding-left: 18px; display: grid; gap: 4px;
+  font-size: 12.5px; color: #374151;
+}
+.analiz-riskler { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+
 /* 9) Yazdırma ---------------------------------------------- */
 @media print {
   .yan-menu, .ust-bar, .dugme, .sohbet-giris { display: none !important; }

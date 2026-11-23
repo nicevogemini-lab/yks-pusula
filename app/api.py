@@ -35,6 +35,7 @@ from .services import analiz as analiz_servis
 from .services import degerlendirme as degerlendirme_servis
 from .services import ders_programi as okul_servisi
 from .services import hedef as hedef_servis
+from .services import plan_analizi as plan_analiz_servisi
 from .services import scoring
 from .services import sinif as sinif_servisi
 from .services.plan import (
@@ -1459,9 +1460,14 @@ def plan_getir(profil_id: int, gun: int = 7, db: Session = Depends(get_db)):
 
 @api.post("/plan/{profil_id}/uret")
 def plan_uret(profil_id: int, gun: int = 7, db: Session = Depends(get_db)):
+    """Günlük planı üretir; yapay zekâ analizi varsa ders payları ondan gelir."""
+    yetki.yazma_kontrol("plan")
     profil = _profil_getir(db, profil_id)
+    # Analiz 12 saatten eskiyse ya da hiç yoksa yenilenir; başarısız olsa da
+    # plan deterministik kurallarla üretilmeye devam eder.
+    analiz = plan_analiz_servisi.analiz_calistir(db, profil)
     eklenen = gunluk_plan_uret(db, profil, gun_sayisi=max(1, min(30, gun)))
-    return {"eklenen": eklenen}
+    return {"eklenen": eklenen, "analiz": analiz}
 
 
 @api.get("/plan/{profil_id}/ozet")
@@ -1481,9 +1487,28 @@ def plan_aylik(profil_id: int, hafta: int = 4, db: Session = Depends(get_db)):
 @api.post("/plan/{profil_id}/aylik-uret")
 def plan_aylik_uret(profil_id: int, hafta: int = 4, db: Session = Depends(get_db)):
     """4 haftalık takvimi doldurur (cumartesi deneme, pazar tekrar)."""
+    yetki.yazma_kontrol("plan")
     profil = _profil_getir(db, profil_id)
+    analiz = plan_analiz_servisi.analiz_calistir(db, profil)
     eklenen = aylik_plan_uret(db, profil, hafta_sayisi=max(1, min(8, hafta)))
-    return {"eklenen": eklenen}
+    return {"eklenen": eklenen, "analiz": analiz}
+
+
+@api.get("/plan/{profil_id}/analiz")
+def plan_analiz_durum(profil_id: int, db: Session = Depends(get_db)):
+    """Yapay zekâ plan analizi: son ders payları, odak konular ve tazelik."""
+    profil = _profil_getir(db, profil_id)
+    return plan_analiz_servisi.durum(db, profil)
+
+
+@api.post("/plan/{profil_id}/analiz")
+def plan_analiz_yenile(
+    profil_id: int, zorla: bool = True, db: Session = Depends(get_db)
+):
+    """Hedef netleri, deneme sonuçlarını ve konu ağırlıklarını modele yorumlatır."""
+    yetki.yazma_kontrol("plan")
+    profil = _profil_getir(db, profil_id)
+    return plan_analiz_servisi.analiz_calistir(db, profil, zorla=zorla)
 
 
 @api.post("/plan-madde/{madde_id}")
@@ -1595,6 +1620,12 @@ def ders_programi_kaydet(
     """Çizelgeyi kaydeder; ``sablon_uygula`` verilirse 11/12 çizelgesi yüklenir."""
     yetki.yazma_kontrol("plan")
     profil = _profil_getir(db, profil_id)
+    if not profil.sinif:
+        # Mezun öğrencide okul yok: plan TYT/AYT konularına göre kurulur
+        raise HTTPException(
+            400,
+            "Mezun öğrencide okul ders programı tutulmaz; plan TYT ve AYT konularına göre kurulur.",
+        )
     hucreler = veri.hucreler
     if veri.sablon_uygula is not None:
         if veri.sablon_uygula not in (11, 12):
@@ -1620,6 +1651,11 @@ def islenen_kaydet(
     """Okulda işlenen konuları kaydeder, günlük planı tekrar bloklarıyla tazeler."""
     yetki.yazma_kontrol("plan")
     profil = _profil_getir(db, profil_id)
+    if not profil.sinif:
+        raise HTTPException(
+            400,
+            "Mezun öğrencide okul dersi işlenmez; plan TYT ve AYT konularına göre kurulur.",
+        )
     tarih = veri.tarih or date.today()
     if tarih > date.today():
         raise HTTPException(400, "İleri tarih için konu girilemez")

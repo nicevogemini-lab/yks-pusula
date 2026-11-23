@@ -12,11 +12,13 @@ import * as ayarlar from "./pages/ayarlar.js";
 import * as kullanicilar from "./pages/kullanicilar.js";
 
 // yetki: sayfayı görebilen roller (yoksa herkes görür)
+// siniflar: sayfanın anlamlı olduğu sınıflar (yoksa her sınıf); mezun = 0
 const SAYFALAR = [
   { kod: "panel", ad: "Panel", ikon: "panel", modul: panel },
   { kod: "mufredat", ad: "Müfredat", ikon: "kitap", modul: mufredat },
   { kod: "plan", ad: "Plan", ikon: "takvim", modul: plan },
-  { kod: "okul", ad: "Ders Programı", ikon: "okul", modul: okul },
+  // Okul çizelgesi yalnız okullu öğrencide; mezunda plan TYT/AYT konularına göre kurulur
+  { kod: "okul", ad: "Ders Programı", ikon: "okul", modul: okul, siniflar: [11, 12] },
   { kod: "analiz", ad: "Analiz", ikon: "grafik", modul: analiz },
   { kod: "deneme", ad: "Denemeler", ikon: "kalem", modul: deneme, yetki: ["yonetici", "veli"] },
   { kod: "koc", ad: "Yapay Zekâ Koçu", ikon: "sohbet", modul: koc },
@@ -28,7 +30,7 @@ const kok = document.getElementById("kok");
 const durum = { meta: null, kullanici: null, profiller: [], profil: null, sayfa: "panel", icerik: null };
 
 // Arayüz sürümü: kullanıcı yeni sürümün yüklendiğini menünün altından görür
-const SURUM = "v3.3";
+const SURUM = "v3.4";
 
 // ---------------------------------------------------------------- yardımcı
 function kalanGun(isoTarih) {
@@ -39,16 +41,26 @@ function kalanGun(isoTarih) {
   return Math.max(0, Math.round((hedef - bugun) / 86400000));
 }
 
-/** Oturum sahibinin rolüne göre görünen sayfalar */
+/** Oturum sahibinin rolüne ve profilin sınıfına göre görünen sayfalar */
 function gorunurSayfalar() {
   const rol = durum.kullanici?.rol || "yonetici";
-  return SAYFALAR.filter((s) => !s.yetki || s.yetki.includes(rol));
+  const sinif = durum.profil?.sinif;
+  return SAYFALAR.filter(
+    (s) =>
+      (!s.yetki || s.yetki.includes(rol)) &&
+      (!s.siniflar || s.siniflar.includes(sinif))
+  );
+}
+
+/** Menüde görünmeyen bir adres yazılırsa ilk sayfaya düşer */
+function istenenSayfa() {
+  const kod = (location.hash || "#/panel").replace(/^#\/?/, "");
+  return gorunurSayfalar().find((s) => s.kod === kod) || null;
 }
 
 function aktifSayfa() {
   const sayfalar = gorunurSayfalar();
-  const kod = (location.hash || "#/panel").replace(/^#\/?/, "");
-  return sayfalar.find((s) => s.kod === kod) || sayfalar[0] || SAYFALAR[0];
+  return istenenSayfa() || sayfalar[0] || SAYFALAR[0];
 }
 
 // ---------------------------------------------------------------- kabuk
@@ -200,12 +212,14 @@ function ustBarGuncelle(sayfa) {
 
 // ---------------------------------------------------------------- yönlendirme
 async function sayfaCiz() {
-  const sayfa = aktifSayfa();
-  // Rolün göremediği sayfaya yazılan adres panele döner
-  if (!gorunurSayfalar().includes(sayfa)) {
-    location.hash = "#/panel";
+  const sayfalar = gorunurSayfalar();
+  const secili = istenenSayfa();
+  // Menüde olmayan sayfa adresi (ör. mezunda Ders Programı) ilk sayfaya döner
+  if (!secili && location.hash) {
+    location.hash = `#/${(sayfalar[0] || SAYFALAR[0]).kod}`;
     return;
   }
+  const sayfa = secili || sayfalar[0] || SAYFALAR[0];
   durum.sayfa = sayfa.kod;
   ustBarGuncelle(sayfa);
   // Öğrenci seçili değilse yalnız Kullanıcılar açılır
