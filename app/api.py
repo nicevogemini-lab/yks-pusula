@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""YKS Pusula HTTP API'si."""
+"""A-KEY HTTP API'si."""
 from __future__ import annotations
 
 import os
@@ -54,7 +54,7 @@ from .services.program import (
     zamanlari_yerlestir,
 )
 
-api = APIRouter(prefix="/api", tags=["pusula"])
+api = APIRouter(prefix="/api", tags=["a-key"])
 
 GECERLI_ALANLAR = {"sayisal", "ea", "sozel"}
 GECERLI_SINIFLAR = {11, 12, 0}  # 0 = mezun
@@ -515,7 +515,7 @@ def meta(db: Session = Depends(get_db)):
             }
         )
     return {
-        "surum": "0.1.0",
+        "surum": "3.5.0",
         "alanlar": alanlar,
         "siniflar": [
             {"kod": 11, "ad": "11. sınıf", "not": "Sınav yılı: 2028"},
@@ -2000,7 +2000,7 @@ def yedek_indir():
         )
     if not DB_YOLU.exists():
         raise HTTPException(404, "Veritabanı dosyası bulunamadı")
-    return FileResponse(DB_YOLU, media_type="application/octet-stream", filename="pusula-yedek.db")
+    return FileResponse(DB_YOLU, media_type="application/octet-stream", filename="a-key-yedek.db")
 
 
 @api.get("/saglik")

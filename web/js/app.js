@@ -30,7 +30,7 @@ const kok = document.getElementById("kok");
 const durum = { meta: null, kullanici: null, profiller: [], profil: null, sayfa: "panel", icerik: null };
 
 // Arayüz sürümü: kullanıcı yeni sürümün yüklendiğini menünün altından görür
-const SURUM = "v3.4";
+const SURUM = "v3.5";
 
 // ---------------------------------------------------------------- yardımcı
 function kalanGun(isoTarih) {
@@ -74,8 +74,8 @@ function kabukCiz() {
       h(
         "div",
         { class: "marka-metin" },
-        h("b", { text: "YKS Pusula" }),
-        h("small", { text: "Koçluk Platformu" })
+        h("b", { text: "A-KEY" }),
+        h("small", { text: "Üniversiteye Giriş Anahtarı" })
       )
     ),
     h("div", { class: "menu-baslik", text: "Çalışma Alanı" })
@@ -207,7 +207,7 @@ function ustBarGuncelle(sayfa) {
   document.querySelectorAll(".menu-oge").forEach((oge) => {
     oge.classList.toggle("aktif", oge.dataset.kod === sayfa.kod);
   });
-  document.title = `${sayfa.modul.baslik || sayfa.ad} · YKS Pusula`;
+  document.title = `${sayfa.modul.baslik || sayfa.ad} · A-KEY`;
 }
 
 // ---------------------------------------------------------------- yönlendirme

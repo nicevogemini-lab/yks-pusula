@@ -1,4 +1,4 @@
 # -*- coding: utf-8 -*-
-"""YKS Pusula uygulama paketi."""
+"""A-KEY uygulama paketi."""
 
-__surum__ = "0.1.0"
+__surum__ = "3.5.0"

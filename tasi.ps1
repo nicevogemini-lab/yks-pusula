@@ -1,4 +1,4 @@
-# YKS Pusula - ayri klasore / Google Drive'a tasima
+# A-KEY - ayri klasore / Google Drive'a tasima
 #
 #   Ornekler:
 #     .\tasi.ps1 -Hedef "C:\Users\<kullanici>\Desktop"

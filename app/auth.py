@@ -455,7 +455,7 @@ def _sayfa(baslik: str, icerik: str, hata: str = "") -> str:
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#1c1f26">
 <meta name="robots" content="noindex">
-<title>{html.escape(baslik)} · YKS Pusula</title>
+<title>{html.escape(baslik)} · A-KEY</title>
 <style>{_CSS}</style>
 </head>
 <body>
@@ -463,8 +463,8 @@ def _sayfa(baslik: str, icerik: str, hata: str = "") -> str:
     <section class="kahraman">
       <div class="marka">{_ISARET}
         <div>
-          <b>YKS Pusula</b>
-          <small>Eğitim koçluğu platformu</small>
+          <b>A-KEY</b>
+          <small>Üniversiteye giriş anahtarı</small>
         </div>
       </div>
       <h2>Hedefe giden yol,<br><em>her gün atılan</em> küçük adımlarla kurulur.</h2>
@@ -476,14 +476,14 @@ def _sayfa(baslik: str, icerik: str, hata: str = "") -> str:
         <li>{_ONAY}<span><b>Veli ve öğrenci takibi:</b> sınıf düzeyine göre kurgulanan
           program, veliye özel görünüm.</span></li>
       </ul>
-      <p class="imza">A-KEY Yazılım · YKS Pusula v3.4</p>
+      <p class="imza">A-KEY · Üniversiteye Giriş Anahtarı · v3.5</p>
     </section>
 
     <main class="kart">
       <div class="marka">{_ISARET}
         <div>
-          <b>YKS Pusula</b>
-          <small>Eğitim koçluğu platformu</small>
+          <b>A-KEY</b>
+          <small>Üniversiteye giriş anahtarı</small>
         </div>
       </div>
       {icerik}

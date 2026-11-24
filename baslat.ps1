@@ -1,4 +1,4 @@
-# YKS Pusula - tek tik baslatici
+# A-KEY - tek tik baslatici
 #   Ilk calistirmada sanal ortami kurar, sonraki calistirmalarda dogrudan acar.
 #   Kullanim: sag tik -> "PowerShell ile calistir"  veya  .\baslat.ps1
 #   Not: Bu dosya bilincli olarak ASCII tutulmustur (Windows PowerShell 5.1

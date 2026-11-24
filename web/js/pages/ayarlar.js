@@ -398,7 +398,7 @@ function veriKarti(saglik, durum) {
           h("small", { text: `${saglik.ders} ders · ${saglik.konu} konu · ${saglik.profil} profil` })),
         h("div", { class: "form-alan" },
           h("label", { text: "Yedekleme" }),
-          h("a", { class: "dugme ikincil kucuk", href: "/api/yedek", download: "pusula-yedek.db" }, "Veritabanını indir"),
+          h("a", { class: "dugme ikincil kucuk", href: "/api/yedek", download: "a-key-yedek.db" }, "Veritabanını indir"),
           h("small", { text: "Dosyayı Google Drive veya harici diske kopyalaman yeterli." }))),
       h("div", { style: { display: "flex", gap: "8px", justifyContent: "flex-end" } },
         h("a", { class: "dugme sessiz kucuk", href: "#/panel" }, "Panele dön"),
@@ -415,7 +415,7 @@ function hakkindaKarti() {
     h(
       "div",
       { style: { display: "grid", gap: "10px", fontSize: "13px", color: "#3b4250" } },
-      h("p", { text: "YKS Pusula 0.1.0 — iskelet sürümü. Müfredat verisi; ders, konu, sınıf düzeyi, tahmini soru ağırlığı ve Maarif beceri etiketleriyle birlikte gömülüdür." }),
+      h("p", { text: "A-KEY · Üniversiteye Giriş Anahtarı — v3.5. Müfredat verisi; ders, konu, sınıf düzeyi, tahmini soru ağırlığı ve Maarif beceri etiketleriyle birlikte gömülüdür." }),
       h("p", { text: "Yöntem: aralıklı tekrar (1-3-7-21-45 gün), aktif geri çağırma (soru çözümü), ön koşul sıralı konu haritası ve deneme netlerinden zayıf konu çıkarımı." }),
       h("p", { text: "Dayanak: Millî Eğitim Bakanlığı Türkiye Yüzyılı Maarif Modeli (beceri temelli öğretim) ve 2028 YKS beceri/bağlam temelli soru modeli." })
     )

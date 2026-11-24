@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""YKS Pusula veri modelleri.
+"""A-KEY veri modelleri.
 
 Tablo ve alan adlari Turkce tutuldu: uygulama dili Turkce oldugu icin
 bakim ve raporlama sirasinda okunabilirlik saglar.

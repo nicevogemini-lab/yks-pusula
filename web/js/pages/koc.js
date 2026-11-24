@@ -126,7 +126,7 @@ function balonEkle(kim, metin, kaynak) {
       { style: { maxWidth: "100%" } },
       h("div", {
         class: "kim",
-        text: kim === "kullanici" ? "Sen" : kaynak === "gemini" ? "Pusula Koç · Gemini" : "Pusula Koç · yerel",
+        text: kim === "kullanici" ? "Sen" : kaynak === "gemini" ? "A-KEY Koç · Gemini" : "A-KEY Koç · yerel",
       }),
       metinBalonu(metin)
     )
@@ -140,7 +140,7 @@ function yaziyorBalonu() {
   const kutu = h(
     "div",
     { class: "mesaj" },
-    h("div", {}, h("div", { class: "kim", text: "Pusula Koç" },
+    h("div", {}, h("div", { class: "kim", text: "A-KEY Koç" },
       h("div", { class: "balon" }, h("div", { class: "yaziyor" }, h("span"), h("span"), h("span")))))
   );
   sohbetKabi.append(kutu);

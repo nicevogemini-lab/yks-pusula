@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""YKS Pusula uygulama girişi.
+"""A-KEY uygulama girişi.
 
 Çalıştırma::
 
@@ -108,7 +108,7 @@ def arayuz_yaniti() -> HTMLResponse:
     )
 
 
-app = FastAPI(title="YKS Pusula", version="0.1.0", lifespan=yasam_dongusu)
+app = FastAPI(title="A-KEY", version="3.5.0", lifespan=yasam_dongusu)
 app.include_router(api)
 app.mount("/statik", TazeStaticFiles(directory=WEB_DIR), name="statik")
 

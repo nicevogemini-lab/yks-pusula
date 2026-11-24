@@ -1,15 +1,20 @@
-# YKS Pusula
+# A-KEY
 
-Türkiye Yüzyılı Maarif Modeli'ne göre kurgulanmış, yapay zekâ destekli YKS koçluk
-platformu. Öğrencinin alanı (Sayısal / Eşit Ağırlık / Sözel), sınıf düzeyi (11, 12,
-mezun) ve hedefi doğrultusunda günlük çalışma planı üretir; deneme sonuçlarını
-analiz eder; yapay zekâ koçuyla kişisel rehberlik verir.
+**Üniversiteye Giriş Anahtarı.** Türkiye Yüzyılı Maarif Modeli'ne göre kurgulanmış,
+yapay zekâ destekli YKS koçluk platformu. Öğrencinin alanı (Sayısal / Eşit Ağırlık /
+Sözel), sınıf düzeyi (11, 12, mezun) ve hedefi doğrultusunda günlük çalışma planı
+üretir; deneme sonuçlarını analiz eder; yapay zekâ koçuyla kişisel rehberlik verir.
 
-> Sürüm 3.4 — canlıda çalışıyor (Render + Neon PostgreSQL). Müfredat haritası,
+> Sürüm 3.5 — canlıda çalışıyor (Render + Neon PostgreSQL). Müfredat haritası,
 > plan üretimi, deneme analizi, koç sohbeti, yönetici için müfredat düzenleme,
 > kullanıcı yönetimi, kendi şifresini değiştirme, bulut yedekleme, **okul ders
 > programı + okulda işlenen konuların tekrarı** ve **yapay zekâ plan analizi
 > (ders payları + odak konular)**.
+>
+> Ürün adı ve slogan değişti (YKS Pusula → A-KEY · Üniversiteye Giriş Anahtarı).
+> Depo/klasör adı (`YKS-Pusula`), oturum çerezi (`pusula_oturum`), veritabanı
+> yolu (`veri/pusula.db`) ve ortam değişkenleri (`PUSULA_*`) korunmuştur: bunlar
+> mevcut kurulumları, oturumları ve yedekleri bozmamak için teknik ad olarak kaldı.
 
 ## Neden bu kurgu
 

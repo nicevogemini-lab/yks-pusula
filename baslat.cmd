@@ -1,5 +1,5 @@
 @echo off
-rem YKS Pusula - cift tikla calistir
+rem A-KEY - cift tikla calistir
 rem PowerShell betik calistirma politikasi kapali olsa da calisir.
 setlocal
 cd /d "%~dp0"

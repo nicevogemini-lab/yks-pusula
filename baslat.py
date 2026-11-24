@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""YKS Pusula sunucusunu başlatır (çift tıkla çalıştırılabilir)."""
+"""A-KEY sunucusunu başlatır (çift tıkla çalıştırılabilir)."""
 from __future__ import annotations
 
 import os
@@ -31,7 +31,7 @@ def _yerel_ip() -> str:
 if __name__ == "__main__":
     adres = f"http://127.0.0.1:{PORT}"
     print("=" * 58)
-    print("  YKS PUSULA - Eğitim Koçluğu Platformu")
+    print("  A-KEY - Üniversiteye Giriş Anahtarı")
     print("=" * 58)
     print(f"  Bu bilgisayar : {adres}")
     print(f"  Aynı ağdaki cihazlar: http://{_yerel_ip()}:{PORT}")
