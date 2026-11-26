@@ -149,7 +149,7 @@ function ozetMetni() {
     (t, d) => t + d.konular.filter((k) => k.kapsam_disi).length, 0);
   const kapsam = veri.kapsam ? veri.kapsam.etiket : "alanına ait TYT + AYT dersleri";
   return `Toplam ${konuSayisi} konu · ${veri.dersler.length} ders · ${kapsam}` +
-    (gizli ? ` · ${gizli} kapsam dışı konu gizli` : "");
+    (gizli ? ` · ${gizli} kapsam dışı konu ${hepsi ? "gösteriliyor" : "gizli"}` : "");
 }
 
 /** Düzenleme sonrası listeyi sunucudan tazeler */
