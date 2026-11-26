@@ -263,7 +263,7 @@ def konu_tablosu(
                 "renk": ders["renk"],
                 "sinif": konu.sinif,
                 "sira": konu.sira,
-                "kapsam_disi": sinif_servisi.kapsam_disi(konu.sinif, profil.sinif),
+                "kapsam_disi": sinif_servisi.kapsam_disi(konu.sinif, profil.sinif, ders["sinav"]),
                 "beklenen_soru": round(beklenen, 2),
                 "agirlik_payi": round(pay, 4),
                 "basari": round(basari, 3),

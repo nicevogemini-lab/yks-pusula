@@ -515,12 +515,12 @@ def meta(db: Session = Depends(get_db)):
             }
         )
     return {
-        "surum": "3.6.0",
+        "surum": "3.6.1",
         "alanlar": alanlar,
         "siniflar": [
-            {"kod": 11, "ad": "11. sınıf", "not": "Sınav yılı: 2028"},
-            {"kod": 12, "ad": "12. sınıf", "not": "Son sınıf"},
-            {"kod": 0, "ad": "Mezun", "not": "Okul bitti, sınav hazırlığı"},
+            {"kod": 11, "ad": "11. sınıf", "not": "Kapsam: 9-10 TYT + 11. sınıf AYT"},
+            {"kod": 12, "ad": "12. sınıf", "not": "Kapsam: 9-10 TYT + 11-12. sınıf AYT"},
+            {"kod": 0, "ad": "Mezun", "not": "Kapsam: tüm TYT + AYT konuları"},
         ],
         "beceriler": BECERI_ETIKET,
         "toplam_ders": db.query(Ders).count(),
@@ -1045,18 +1045,24 @@ def analiz(profil_id: int, db: Session = Depends(get_db)):
 # Müfredat ve konu durumu
 # --------------------------------------------------------------------------
 @api.get("/mufredat/{profil_id}")
-def mufredat(profil_id: int, db: Session = Depends(get_db)):
+def mufredat(profil_id: int, hepsi: bool = False, db: Session = Depends(get_db)):
     profil = _profil_getir(db, profil_id)
     ders_map = _ders_map(db)
     konular = _alan_konulari(db, profil)
     durumlar = _durum_map(db, profil.id)
+    # Yönetici ?hepsi=1 ile kapsam dışı konuları da görür (düzenleme için)
+    tumunu_goster = hepsi and yetki.yonetici_mi()
 
     gruplu: dict[str, dict] = {}
     for konu in sorted(konular, key=lambda k: (k.ders_kod, k.sira)):
-        # Sınıf kapsamı dışındaki konular bu sayfada listelenmez
-        if sinif_servisi.kapsam_disi(konu.sinif, profil.sinif):
-            continue
         ders = ders_map.get(konu.ders_kod)
+        # Sınıf kapsamı dışındaki konular listelenmez:
+        # 11. sınıf -> 9-10 TYT + 11 AYT, 12. sınıf -> 9-10 TYT + 11-12 AYT
+        disinda = sinif_servisi.kapsam_disi(
+            konu.sinif, profil.sinif, ders.sinav if ders else None
+        )
+        if disinda and not tumunu_goster:
+            continue
         grup = gruplu.setdefault(
             konu.ders_kod,
             {
@@ -1077,6 +1083,7 @@ def mufredat(profil_id: int, db: Session = Depends(get_db)):
                 "guven": durum.guven if durum else 0,
                 "tekrar_sayisi": durum.tekrar_sayisi if durum else 0,
                 "beceri_etiket": [BECERI_ETIKET.get(b, b) for b in (konu.beceri or "").split(",") if b],
+                "kapsam_disi": disinda,
             }
         )
 
@@ -1109,6 +1116,7 @@ def mufredat(profil_id: int, db: Session = Depends(get_db)):
             "etiket": sinif_servisi.kapsam_etiketi(profil.sinif),
             "sinif": profil.sinif,
             "aralik": list(sinif_servisi.konu_kapsami(profil.sinif) or []),
+            **sinif_servisi.kapsam_cizelgesi(profil.sinif),
         },
     }
 
@@ -1450,6 +1458,7 @@ def plan_getir(profil_id: int, gun: int = 7, db: Session = Depends(get_db)):
             "etiket": sinif_servisi.kapsam_etiketi(profil.sinif),
             "sinif": profil.sinif,
             "aralik": list(sinif_servisi.konu_kapsami(profil.sinif) or []),
+            **sinif_servisi.kapsam_cizelgesi(profil.sinif),
         },
         "gunler": sonuc,
         "beceri_dengesi": beceri_dengesi(tum_maddeler, konu_map, ek={"SD": sd_dk}),
@@ -1560,7 +1569,8 @@ def plan_madde_ekle(profil_id: int, veri: PlanMaddeGiris, db: Session = Depends(
     konu = db.get(Konu, veri.konu_id)
     if konu is None:
         raise HTTPException(404, "Konu bulunamadı")
-    if sinif_servisi.kapsam_disi(konu.sinif, profil.sinif):
+    ders = _ders_getir(db, konu.ders_kod)
+    if sinif_servisi.kapsam_disi(konu.sinif, profil.sinif, ders.sinav if ders else None):
         raise HTTPException(400, f"Bu konu {sinif_servisi.kapsam_etiketi(profil.sinif)} dışında")
     tarih = veri.tarih or date.today()
     if veri.tur not in {"konu", "tekrar", "soru"}:

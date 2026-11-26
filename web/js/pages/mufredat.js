@@ -22,13 +22,17 @@ let yonetici = false;
 // Açık olan düzenleme formu: { tip: "konu", dersKod, konu } | { tip: "ders", ders }
 let form = null;
 let ustBilgi = null;
+// Yönetici kapsam dışı konuları da görsün mü? (düzenleme/silme için)
+let hepsi = false;
+let kapsamDugmesi = null;
 const acikDersler = new Set();
 
 export async function ciz(kap, durum) {
   uygulama = durum;
   // Müfredat tüm profiller için ortak: düzenleme yetkisi yalnız yöneticide
   yonetici = (durum.kullanici?.rol || "yonetici") === "yonetici";
-  veri = await api.get(`/api/mufredat/${durum.profil.id}`);
+  hepsi = false;
+  veri = await mufredatGetir();
   arama = "";
   sinavFiltre = "hepsi";
   form = null;
@@ -81,7 +85,7 @@ export async function ciz(kap, durum) {
         h("div", { style: { display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" } },
           veri.kapsam ? rozet(`Kapsam: ${veri.kapsam.etiket}`, "marka") : null,
           filtreler,
-          h("div", { style: { width: "220px" } }, aramaGirdi),
+          h("div", { style: { width: "200px" } }, aramaGirdi),
           yonetici
             ? h("div", { style: { display: "flex", gap: "6px", flexWrap: "wrap" } },
                 h("button", {
@@ -95,7 +99,20 @@ export async function ciz(kap, durum) {
                   type: "button",
                   title: "Müfredata yeni ders ekle",
                   onclick: () => { form = { tip: "ders", ders: null }; cizListe(); },
-                }, ikon("arti", 13), "Ders ekle"))
+                }, ikon("arti", 13), "Ders ekle"),
+                (kapsamDugmesi = h("button", {
+                  class: `dugme ${hepsi ? "" : "sessiz"} kucuk`,
+                  type: "button",
+                  title: "Bu öğrencinin sınıfına girmeyen konuları da göster (yönetici görünümü)",
+                  onclick: async () => {
+                    hepsi = !hepsi;
+                    veri = await mufredatGetir();
+                    kapsamDugmesi.className = `dugme ${hepsi ? "" : "sessiz"} kucuk`;
+                    kapsamDugmesi.textContent = kapsamDugmeMetni();
+                    if (ustBilgi) ustBilgi.textContent = ozetMetni();
+                    cizListe();
+                  },
+                }, kapsamDugmeMetni())))
             : null)
       ),
       h("p", {
@@ -105,7 +122,7 @@ export async function ciz(kap, durum) {
       yonetici
         ? h("p", {
             class: "ipucu",
-            text: "Yönetici olarak ders ve konu ekleyebilir, düzenleyebilir ve kaldırabilirsin: üstteki “Konu ekle” / “Ders ekle” düğmeleri yeni kayıt açar, her dersin başındaki düğmeler o dersin işlemlerini gösterir, her konu satırındaki ✕ konuyu kaldırır. Elle eklediğin ya da düzenlediğin satırlar, program açılışındaki gömülü müfredat güncellemesiyle ezilmez ya da geri gelmez.",
+            text: "Yönetici olarak ders ve konu ekleyebilir, düzenleyebilir ve kaldırabilirsin: üstteki “Konu ekle” / “Ders ekle” düğmeleri yeni kayıt açar, her dersin başındaki düğmeler o dersin işlemlerini gösterir, her konu satırındaki ✕ konuyu kaldırır. Öğrencinin sınıfına girmeyen konular varsayılan olarak gizlidir; eklemek/düzenlemek için “Kapsam dışı: gizli” düğmesiyle görünür yap. Elle eklediğin ya da düzenlediğin satırlar, program açılışındaki gömülü müfredat güncellemesiyle ezilmez ya da geri gelmez.",
           })
         : null
     ),
@@ -115,15 +132,29 @@ export async function ciz(kap, durum) {
   cizListe(listeKabi);
 }
 
+/** Müfredatı getirir; yönetici “kapsam dışı” görünümündeyse tümünü ister */
+function mufredatGetir() {
+  const ek = yonetici && hepsi ? "?hepsi=1" : "";
+  return api.get(`/api/mufredat/${uygulama.profil.id}${ek}`);
+}
+
+function kapsamDugmeMetni() {
+  return hepsi ? "Kapsam dışı: görünür" : "Kapsam dışı: gizli";
+}
+
 function ozetMetni() {
-  const konuSayisi = veri.dersler.reduce((t, d) => t + d.konular.length, 0);
+  const konuSayisi = veri.dersler.reduce(
+    (t, d) => t + d.konular.filter((k) => !k.kapsam_disi).length, 0);
+  const gizli = veri.dersler.reduce(
+    (t, d) => t + d.konular.filter((k) => k.kapsam_disi).length, 0);
   const kapsam = veri.kapsam ? veri.kapsam.etiket : "alanına ait TYT + AYT dersleri";
-  return `Toplam ${konuSayisi} konu · ${veri.dersler.length} ders · ${kapsam}`;
+  return `Toplam ${konuSayisi} konu · ${veri.dersler.length} ders · ${kapsam}` +
+    (gizli ? ` · ${gizli} kapsam dışı konu gizli` : "");
 }
 
 /** Düzenleme sonrası listeyi sunucudan tazeler */
 async function yenidenYukle(mesaj) {
-  veri = await api.get(`/api/mufredat/${uygulama.profil.id}`);
+  veri = await mufredatGetir();
   form = null;
   if (ustBilgi) ustBilgi.textContent = ozetMetni();
   cizListe();
@@ -152,8 +183,10 @@ function cizListe(kap = document.getElementById("konu-listesi")) {
     const konular = arama
       ? ders.konular.filter((k) => k.ad.toLocaleLowerCase("tr").includes(arama))
       : ders.konular;
-    const tamam = ders.konular.filter((k) => k.durum === "tamam").length;
-    const yuzdeDeger = yuzde(tamam, ders.konular.length);
+    const kapsamda = ders.konular.filter((k) => !k.kapsam_disi);
+    const gizliSayi = ders.konular.length - kapsamda.length;
+    const tamam = kapsamda.filter((k) => k.durum === "tamam").length;
+    const yuzdeDeger = yuzde(tamam, kapsamda.length);
 
     const detay = h("details", { class: "ders-kart", open: acikDersler.has(ders.kod) });
     detay.addEventListener("toggle", () => {
@@ -169,7 +202,10 @@ function cizListe(kap = document.getElementById("konu-listesi")) {
         "div",
         { class: "baslik-alan" },
         h("b", { text: ders.ad }),
-        h("small", { text: `${ders.sinav} · ${ders.soru_sayisi} soru · ${ders.konular.length} konu` })
+        h("small", {
+          text: `${ders.sinav} · ${ders.soru_sayisi} soru · ${kapsamda.length} konu` +
+            (gizliSayi ? ` · ${gizliSayi} kapsam dışı` : ""),
+        })
       ),
       h("div", { class: "mini-cubuk" }, h("span", { style: { width: `${yuzdeDeger}%`, background: ders.renk } })),
       h("span", { class: "yuzde-cip", text: `${yuzdeDeger}%` }),
@@ -235,7 +271,8 @@ function konuSatiri(konu, ders) {
         "div",
         { class: "konu-ad" },
         konu.ad,
-        konu.agirlik >= 3 ? rozet("yüksek ağırlık", "uyari") : null
+        konu.agirlik >= 3 ? rozet("yüksek ağırlık", "uyari") : null,
+        konu.kapsam_disi ? rozet("kapsam dışı", "uyari") : null
       ),
       h(
         "div",
@@ -247,6 +284,7 @@ function konuSatiri(konu, ders) {
     h("div", { class: "durum-alan" }, secim),
     h("div", { class: "durum-alan" }, yildizKabi)
   );
+  if (konu.kapsam_disi) satir.classList.add("kapsam-disi");
   if (yonetici) {
     satir.classList.add("yonetici");
     satir.append(
@@ -353,13 +391,20 @@ function konuFormu(ders, konu) {
     ? null
     : h("select", { class: "secim" },
         veri.dersler.map((d) => h("option", { value: d.kod }, `${d.ad} · ${d.kod}`)));
+  const seciliSinav = () =>
+    (ders || veri.dersler.find((d) => d.kod === (dersSec?.value || "")))?.sinav || "TYT";
   const ad = h("input", {
     class: "alan", type: "text", maxlength: "160",
     value: konu?.ad || "", placeholder: "Konu adı",
   });
+  const ilkSinif = konu?.sinif ?? onerilenSinif(seciliSinav());
   const sinif = h("select", { class: "secim" },
     [9, 10, 11, 12].map((s) =>
-      h("option", { value: s, selected: (konu?.sinif ?? 11) === s }, `${s}. sınıf`)));
+      h("option", { value: s, selected: ilkSinif === s }, `${s}. sınıf`)));
+  // Ders değişince sınıf önerisini o dersin sınavına göre güncelle
+  if (dersSec) dersSec.addEventListener("change", () => {
+    if (!konu) sinif.value = String(onerilenSinif(seciliSinav()));
+  });
   const agirlik = h("select", { class: "secim" },
     [1, 2, 3].map((a) =>
       h("option", { value: a, selected: (konu?.agirlik ?? 2) === a }, `Ağırlık ${a}`)));
@@ -396,16 +441,24 @@ function konuFormu(ders, konu) {
       bildir("Önce bir ders seç.", "hata");
       return;
     }
+    const hedefSinav = (ders || veri.dersler.find((d) => d.kod === hedefDers))?.sinav || "TYT";
     kaydetDugmesi.disabled = true;
     acikDersler.add(hedefDers);
     try {
       if (yeni) {
         await api.post("/api/mufredat/konu", { ders_kod: hedefDers, ...govde });
+        const kapsamda = kapsamdaMi(govde.sinif, hedefSinav);
+        // Yeni satır kapsam dışıysa yönetici görünümünü aç ki kayıt gözden kaçmasın
+        if (!kapsamda) hepsi = true;
         await yenidenYukle(
-          kapsamdaMi(govde.sinif)
+          kapsamda
             ? `“${govde.ad}” müfredata eklendi.`
-            : `“${govde.ad}” eklendi; ${govde.sinif}. sınıf bu öğrencinin kapsamı dışında olduğu için listede görünmez.`
+            : `“${govde.ad}” eklendi; ${govde.sinif}. sınıf bu öğrencinin kapsamı dışında, “Kapsam dışı: görünür” ile listelendi.`
         );
+        if (kapsamDugmesi) {
+          kapsamDugmesi.className = `dugme ${hepsi ? "" : "sessiz"} kucuk`;
+          kapsamDugmesi.textContent = kapsamDugmeMetni();
+        }
       } else {
         await api.patch(`/api/mufredat/konu/${konu.id}`, govde);
         await yenidenYukle("Konu güncellendi.");
@@ -421,7 +474,8 @@ function konuFormu(ders, konu) {
     h("div", { class: "izgara" },
       dersSec ? formAlani("Ders", dersSec, "Konu bu derse eklenir.") : null,
       formAlani("Konu adı", ad),
-      formAlani("Sınıf", sinif, "Müfredat kapsamını belirler."),
+      formAlani("Sınıf", sinif,
+        "Kapsam: 11 -> 9-10 TYT + 11 AYT · 12 -> 9-10 TYT + 11-12 AYT · mezun -> tümü."),
       formAlani("Ağırlık", agirlik, "Tahmini soru yoğunluğu (1-3)."),
       formAlani("Süre (dk)", sure, "İlk öğrenme için önerilen süre."),
       formAlani("Beceri", beceri, "KB, AB, SD, OK — isteğe bağlı."),
@@ -506,7 +560,7 @@ function dersFormu(ders) {
     h("div", { class: "izgara" },
       formAlani("Ders kodu", kod, "Benzersiz: ör. AYT-FEL."),
       formAlani("Ders adı", ad),
-      formAlani("Sınav", sinav),
+      formAlani("Sınav", sinav, "TYT 9-10. sınıfı, AYT 11-12. sınıfı kapsar."),
       formAlani("Alan", alanlar, "Ders hangi alanların müfredatına girer."),
       formAlani("Soru sayısı", soru),
       formAlani("Renk", renk),
@@ -514,11 +568,24 @@ function dersFormu(ders) {
     formDugmeleri(kaydetDugmesi));
 }
 
-/** Konu bu öğrencinin sınıf kapsamında mı? */
-function kapsamdaMi(sinif) {
-  const aralik = veri.kapsam?.aralik || [];
+/** Sınavına göre formun önereceği sınıf: öğrencinin sınıfı kapsamdaysa o */
+function onerilenSinif(sinav) {
+  const kapsam = veri.kapsam || {};
+  const izinli = (sinav === "AYT" ? kapsam.ayt : kapsam.tyt) || [];
+  const profilSinif = Number(kapsam.sinif || 0);
+  if (izinli.length) {
+    return izinli.includes(profilSinif) ? profilSinif : izinli[izinli.length - 1];
+  }
+  return sinav === "AYT" ? 12 : 10; // mezun: sınır yok, makul varsayılan
+}
+
+/** Konu bu öğrencinin sınıf ve sınav kapsamında mı? */
+function kapsamdaMi(sinif, sinav) {
+  const kapsam = veri.kapsam || {};
+  const aralik = kapsam.aralik || [];
   if (!aralik.length) return true; // mezun: tüm müfredat
-  return aralik.includes(sinif);
+  const izinli = (sinav === "AYT" ? kapsam.ayt : kapsam.tyt) || aralik;
+  return izinli.includes(sinif);
 }
 
 async function konuSil(konu) {

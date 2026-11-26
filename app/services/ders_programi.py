@@ -191,9 +191,9 @@ def konu_secenekleri(db: Session, profil: Profil, anahtar: str) -> list[dict]:
     kodlar = [k for k in kayit.get("ders", []) if k]
     if not kodlar:
         return []
-    ders_adlari = {
-        d.kod: d.ad for d in db.execute(select(Ders).where(Ders.kod.in_(kodlar))).scalars()
-    }
+    ders_satirlari = list(db.execute(select(Ders).where(Ders.kod.in_(kodlar))).scalars())
+    ders_adlari = {d.kod: d.ad for d in ders_satirlari}
+    ders_sinavlari = {d.kod: d.sinav for d in ders_satirlari}
     konular = db.execute(
         select(Konu).where(Konu.ders_kod.in_(kodlar)).order_by(Konu.ders_kod, Konu.sira)
     ).scalars()
@@ -206,7 +206,7 @@ def konu_secenekleri(db: Session, profil: Profil, anahtar: str) -> list[dict]:
             "sinif": k.sinif,
         }
         for k in konular
-        if not sinif_servisi.kapsam_disi(k.sinif, profil.sinif)
+        if not sinif_servisi.kapsam_disi(k.sinif, profil.sinif, ders_sinavlari.get(k.ders_kod))
     ]
 
 
@@ -238,7 +238,8 @@ def islenen_yaz(db: Session, profil: Profil, tarih: date, konu_idler: list[int])
         konu = db.get(Konu, konu_id)
         if konu is None:
             raise ValueError(f"Konu bulunamadı: {konu_id}")
-        if sinif_servisi.kapsam_disi(konu.sinif, profil.sinif):
+        ders = db.get(Ders, konu.ders_kod)
+        if sinif_servisi.kapsam_disi(konu.sinif, profil.sinif, ders.sinav if ders else None):
             raise ValueError(f"Konu {sinif_servisi.kapsam_etiketi(profil.sinif)} dışında: {konu.ad}")
         if konu_id not in mevcut:
             db.add(

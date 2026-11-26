@@ -5,7 +5,7 @@ yapay zekâ destekli YKS koçluk platformu. Öğrencinin alanı (Sayısal / Eşi
 Sözel), sınıf düzeyi (11, 12, mezun) ve hedefi doğrultusunda günlük çalışma planı
 üretir; deneme sonuçlarını analiz eder; yapay zekâ koçuyla kişisel rehberlik verir.
 
-> Sürüm 3.6 — canlıda çalışıyor: <https://a-key.onrender.com> (Render + Neon
+> Sürüm 3.6.1 — canlıda çalışıyor: <https://a-key.onrender.com> (Render + Neon
 > PostgreSQL). Müfredat haritası,
 > plan üretimi, deneme analizi, koç sohbeti, yönetici için müfredat düzenleme
 > (ders/konu ekleme, düzenleme, silme),
@@ -14,8 +14,11 @@ Sözel), sınıf düzeyi (11, 12, mezun) ve hedefi doğrultusunda günlük çal�
 > (ders payları + odak konular)**.
 >
 > Ürün adı ve slogan: A-KEY · Üniversiteye giriş anahtarı. Yayın adresi
-> <https://a-key.onrender.com>; eski adres <https://yks-pusula.onrender.com> aynı
-> Neon veritabanına bağlı yedek servis olarak duruyor.
+> <https://a-key.onrender.com> (Render servisi `a-key`); eski adres
+> <https://yks-pusula.onrender.com> aynı Neon veritabanına bağlı yedek servis
+> olarak duruyor, ücretsiz saat tüketmesin diye askıya alındı (Render panelinden
+> Resume ile geri açılır). Yayın: `betikler\render_yayin.py` (varsayılan servis
+> `a-key`).
 > Depo/klasör adı (`YKS-Pusula`), oturum çerezi (`pusula_oturum`), veritabanı
 > yolu (`veri/pusula.db`) ve ortam değişkenleri (`PUSULA_*`) korunmuştur: bunlar
 > mevcut kurulumları, oturumları ve yedekleri bozmamak için teknik ad olarak kaldı.
@@ -182,9 +185,15 @@ yerleştirilir. Bir güne en fazla üç okul tekrarı bloğu yazılır.
 **Mezun profilde okul yoktur.** Sınıfı "Mezun" olan öğrencide Ders Programı
 sayfası menüden kalkar (`PUT /api/profil/{id}/ders-programi` ve
 `POST /api/profil/{id}/islenen` 400 döner); program TYT ve AYT konularına göre
-kurulur. Kapsam sınıf düzeyine bağlıdır ve her yerde aynı süzgeç işler:
-11. sınıf → 9-11, 12. sınıf → 9-12, mezun → tüm TYT/AYT konuları. Kapsam dışı
-konu plana, analiz tablosuna ve konu seçeneklerine girmez.
+kurulur. Kapsam sınıf ve sınav düzeyine bağlıdır, her yerde aynı süzgeç işler:
+
+- **11. sınıf** → 9-10. sınıf TYT + 11. sınıf AYT konuları
+- **12. sınıf** → 9-10. sınıf TYT + 11-12. sınıf AYT konuları
+- **Mezun** → tüm TYT + AYT konuları
+
+Kapsam dışı konu plana, analiz tablosuna, müfredat listesine ve konu
+seçeneklerine girmez. Yönetici, müfredat sayfasındaki **Kapsam dışı: gizli**
+düğmesiyle bu konuları görüp düzenleyebilir (`GET /api/mufredat/{id}?hepsi=1`).
 
 ### Yapay zekâ plan analizi (ders payı ve odak konular)
 

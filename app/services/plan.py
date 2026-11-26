@@ -103,6 +103,10 @@ def oncelikli_konular(db: Session, profil: Profil, limit: int = 40) -> list[tupl
     konular = list(
         db.execute(select(Konu).where(Konu.ders_kod.in_(dersler))).scalars()
     )
+    # TYT yalnız 9-10, AYT yalnız 11-12 sınıf konularından soru üretir
+    sinavlar = {
+        kod: sinav for kod, sinav in db.execute(select(Ders.kod, Ders.sinav)).all()
+    }
     durumlar = _durum_haritasi(db, profil.id)
     tamam_olan = {kid for kid, d in durumlar.items() if d.durum == "tamam"}
 
@@ -131,7 +135,7 @@ def oncelikli_konular(db: Session, profil: Profil, limit: int = 40) -> list[tupl
     puanli: list[tuple[Konu, float]] = []
     for konu in konular:
         # Sınıf kapsamı dışındaki konu plana aday olmaz (analizde görünür)
-        if sinif_servisi.kapsam_disi(konu.sinif, profil.sinif):
+        if sinif_servisi.kapsam_disi(konu.sinif, profil.sinif, sinavlar.get(konu.ders_kod)):
             continue
         durum = durumlar.get(konu.id)
         durum_adi = durum.durum if durum else "yok"
