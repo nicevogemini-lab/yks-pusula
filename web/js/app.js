@@ -30,7 +30,7 @@ const kok = document.getElementById("kok");
 const durum = { meta: null, kullanici: null, profiller: [], profil: null, sayfa: "panel", icerik: null };
 
 // Arayüz sürümü: kullanıcı yeni sürümün yüklendiğini menünün altından görür
-const SURUM = "v3.5";
+const SURUM = "v3.6";
 
 // ---------------------------------------------------------------- yardımcı
 function kalanGun(isoTarih) {
@@ -75,7 +75,7 @@ function kabukCiz() {
         "div",
         { class: "marka-metin" },
         h("b", { text: "A-KEY" }),
-        h("small", { text: "Üniversiteye Giriş Anahtarı" })
+        h("small", { text: "Üniversiteye giriş anahtarı" })
       )
     ),
     h("div", { class: "menu-baslik", text: "Çalışma Alanı" })

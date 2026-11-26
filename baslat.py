@@ -31,7 +31,7 @@ def _yerel_ip() -> str:
 if __name__ == "__main__":
     adres = f"http://127.0.0.1:{PORT}"
     print("=" * 58)
-    print("  A-KEY - Üniversiteye Giriş Anahtarı")
+    print("  A-KEY - Üniversiteye giriş anahtarı")
     print("=" * 58)
     print(f"  Bu bilgisayar : {adres}")
     print(f"  Aynı ağdaki cihazlar: http://{_yerel_ip()}:{PORT}")

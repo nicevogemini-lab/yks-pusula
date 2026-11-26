@@ -1,17 +1,21 @@
 # A-KEY
 
-**Üniversiteye Giriş Anahtarı.** Türkiye Yüzyılı Maarif Modeli'ne göre kurgulanmış,
+**Üniversiteye giriş anahtarı.** Türkiye Yüzyılı Maarif Modeli'ne göre kurgulanmış,
 yapay zekâ destekli YKS koçluk platformu. Öğrencinin alanı (Sayısal / Eşit Ağırlık /
 Sözel), sınıf düzeyi (11, 12, mezun) ve hedefi doğrultusunda günlük çalışma planı
 üretir; deneme sonuçlarını analiz eder; yapay zekâ koçuyla kişisel rehberlik verir.
 
-> Sürüm 3.5 — canlıda çalışıyor (Render + Neon PostgreSQL). Müfredat haritası,
-> plan üretimi, deneme analizi, koç sohbeti, yönetici için müfredat düzenleme,
+> Sürüm 3.6 — canlıda çalışıyor: <https://a-key.onrender.com> (Render + Neon
+> PostgreSQL). Müfredat haritası,
+> plan üretimi, deneme analizi, koç sohbeti, yönetici için müfredat düzenleme
+> (ders/konu ekleme, düzenleme, silme),
 > kullanıcı yönetimi, kendi şifresini değiştirme, bulut yedekleme, **okul ders
 > programı + okulda işlenen konuların tekrarı** ve **yapay zekâ plan analizi
 > (ders payları + odak konular)**.
 >
-> Ürün adı ve slogan değişti (YKS Pusula → A-KEY · Üniversiteye Giriş Anahtarı).
+> Ürün adı ve slogan: A-KEY · Üniversiteye giriş anahtarı. Yayın adresi
+> <https://a-key.onrender.com>; eski adres <https://yks-pusula.onrender.com> aynı
+> Neon veritabanına bağlı yedek servis olarak duruyor.
 > Depo/klasör adı (`YKS-Pusula`), oturum çerezi (`pusula_oturum`), veritabanı
 > yolu (`veri/pusula.db`) ve ortam değişkenleri (`PUSULA_*`) korunmuştur: bunlar
 > mevcut kurulumları, oturumları ve yedekleri bozmamak için teknik ad olarak kaldı.

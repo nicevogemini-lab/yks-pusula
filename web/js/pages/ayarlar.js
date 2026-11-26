@@ -415,7 +415,7 @@ function hakkindaKarti() {
     h(
       "div",
       { style: { display: "grid", gap: "10px", fontSize: "13px", color: "#3b4250" } },
-      h("p", { text: "A-KEY · Üniversiteye Giriş Anahtarı — v3.5. Müfredat verisi; ders, konu, sınıf düzeyi, tahmini soru ağırlığı ve Maarif beceri etiketleriyle birlikte gömülüdür." }),
+      h("p", { text: "A-KEY · Üniversiteye giriş anahtarı — v3.6. Müfredat verisi; ders, konu, sınıf düzeyi, tahmini soru ağırlığı ve Maarif beceri etiketleriyle birlikte gömülüdür." }),
       h("p", { text: "Yöntem: aralıklı tekrar (1-3-7-21-45 gün), aktif geri çağırma (soru çözümü), ön koşul sıralı konu haritası ve deneme netlerinden zayıf konu çıkarımı." }),
       h("p", { text: "Dayanak: Millî Eğitim Bakanlığı Türkiye Yüzyılı Maarif Modeli (beceri temelli öğretim) ve 2028 YKS beceri/bağlam temelli soru modeli." })
     )

@@ -83,12 +83,19 @@ export async function ciz(kap, durum) {
           filtreler,
           h("div", { style: { width: "220px" } }, aramaGirdi),
           yonetici
-            ? h("button", {
-                class: "dugme ikincil kucuk",
-                type: "button",
-                title: "Müfredata yeni ders ekle",
-                onclick: () => { form = { tip: "ders", ders: null }; cizListe(); },
-              }, ikon("arti", 13), "Ders ekle")
+            ? h("div", { style: { display: "flex", gap: "6px", flexWrap: "wrap" } },
+                h("button", {
+                  class: "dugme kucuk",
+                  type: "button",
+                  title: "Müfredata yeni konu ekle",
+                  onclick: () => { form = { tip: "konu", dersKod: "", konu: null }; cizListe(); },
+                }, ikon("arti", 13), "Konu ekle"),
+                h("button", {
+                  class: "dugme ikincil kucuk",
+                  type: "button",
+                  title: "Müfredata yeni ders ekle",
+                  onclick: () => { form = { tip: "ders", ders: null }; cizListe(); },
+                }, ikon("arti", 13), "Ders ekle"))
             : null)
       ),
       h("p", {
@@ -98,7 +105,7 @@ export async function ciz(kap, durum) {
       yonetici
         ? h("p", {
             class: "ipucu",
-            text: "Yönetici olarak konu ekleyebilir, düzenleyebilir ve kaldırabilirsin. Elle eklediğin ya da düzenlediğin satırlar, program açılışındaki gömülü müfredat güncellemesiyle ezilmez ya da geri gelmez.",
+            text: "Yönetici olarak ders ve konu ekleyebilir, düzenleyebilir ve kaldırabilirsin: üstteki “Konu ekle” / “Ders ekle” düğmeleri yeni kayıt açar, her dersin başındaki düğmeler o dersin işlemlerini gösterir, her konu satırındaki ✕ konuyu kaldırır. Elle eklediğin ya da düzenlediğin satırlar, program açılışındaki gömülü müfredat güncellemesiyle ezilmez ya da geri gelmez.",
           })
         : null
     ),
@@ -128,6 +135,7 @@ function cizListe(kap = document.getElementById("konu-listesi")) {
   kap.replaceChildren();
 
   if (yonetici && form?.tip === "ders") kap.append(dersFormu(form.ders));
+  if (yonetici && form?.tip === "konu" && !form.dersKod) kap.append(konuFormu(null, form.konu));
 
   const dersler = veri.dersler.filter((d) => {
     if (sinavFiltre !== "hepsi" && d.sinav !== sinavFiltre) return false;
@@ -169,8 +177,16 @@ function cizListe(kap = document.getElementById("konu-listesi")) {
     );
 
     const govde = h("div", { class: "konu-liste" });
-    konular.forEach((konu) => govde.append(konuSatiri(konu, ders)));
+    // Yönetici işlemleri listenin başında dursun: uzun derslerde görünür kalır
     if (yonetici) govde.append(dersAltligi(ders));
+    if (!ders.konular.length) {
+      govde.append(h("p", {
+        class: "ipucu",
+        style: { padding: "4px 18px 12px" },
+        text: "Bu derste henüz konu yok. Yukarıdaki “Konu ekle” düğmesiyle ilk konuyu ekleyebilirsin.",
+      }));
+    }
+    konular.forEach((konu) => govde.append(konuSatiri(konu, ders)));
     detay.append(ozet, govde);
     kap.append(detay);
   });
@@ -307,7 +323,7 @@ function formDugmeleri(kaydetDugmesi) {
 /** Ders başlığının altındaki yönetici işlemleri ve açık konu formu */
 function dersAltligi(ders) {
   const sarmal = h("div", {});
-  const dugmeler = h("div", { class: "mufredat-altlik" },
+  const dugmeler = h("div", { class: "mufredat-altlik ust" },
     h("button", {
       class: "dugme ikincil kucuk",
       type: "button",
@@ -332,6 +348,11 @@ function dersAltligi(ders) {
 /** Konu ekleme/düzenleme formu */
 function konuFormu(ders, konu) {
   const yeni = !konu;
+  // Ders kartından açılmadıysa (üstteki “Konu ekle”) ders seçilebilir
+  const dersSec = ders
+    ? null
+    : h("select", { class: "secim" },
+        veri.dersler.map((d) => h("option", { value: d.kod }, `${d.ad} · ${d.kod}`)));
   const ad = h("input", {
     class: "alan", type: "text", maxlength: "160",
     value: konu?.ad || "", placeholder: "Konu adı",
@@ -370,11 +391,16 @@ function konuFormu(ders, konu) {
       bildir("Konu adı en az 2 karakter olmalı.", "hata");
       return;
     }
+    const hedefDers = ders ? ders.kod : (dersSec?.value || "");
+    if (!hedefDers) {
+      bildir("Önce bir ders seç.", "hata");
+      return;
+    }
     kaydetDugmesi.disabled = true;
-    if (!acikDersler.has(ders.kod)) acikDersler.add(ders.kod);
+    acikDersler.add(hedefDers);
     try {
       if (yeni) {
-        await api.post("/api/mufredat/konu", { ders_kod: ders.kod, ...govde });
+        await api.post("/api/mufredat/konu", { ders_kod: hedefDers, ...govde });
         await yenidenYukle(
           kapsamdaMi(govde.sinif)
             ? `“${govde.ad}” müfredata eklendi.`
@@ -391,8 +417,9 @@ function konuFormu(ders, konu) {
   });
 
   return h("div", { class: "mufredat-form" },
-    h("b", { text: yeni ? `${ders.ad} · yeni konu` : `${konu.ad} · düzenle` }),
+    h("b", { text: yeni ? (ders ? `${ders.ad} · yeni konu` : "Yeni konu") : `${konu.ad} · düzenle` }),
     h("div", { class: "izgara" },
+      dersSec ? formAlani("Ders", dersSec, "Konu bu derse eklenir.") : null,
       formAlani("Konu adı", ad),
       formAlani("Sınıf", sinif, "Müfredat kapsamını belirler."),
       formAlani("Ağırlık", agirlik, "Tahmini soru yoğunluğu (1-3)."),

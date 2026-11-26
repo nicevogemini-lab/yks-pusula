@@ -515,7 +515,7 @@ def meta(db: Session = Depends(get_db)):
             }
         )
     return {
-        "surum": "3.5.0",
+        "surum": "3.6.0",
         "alanlar": alanlar,
         "siniflar": [
             {"kod": 11, "ad": "11. sınıf", "not": "Sınav yılı: 2028"},
