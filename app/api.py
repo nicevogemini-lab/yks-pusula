@@ -515,7 +515,7 @@ def meta(db: Session = Depends(get_db)):
             }
         )
     return {
-        "surum": "3.6.1",
+        "surum": "3.6.2",
         "alanlar": alanlar,
         "siniflar": [
             {"kod": 11, "ad": "11. sınıf", "not": "Kapsam: 9-10 TYT + 11. sınıf AYT"},
@@ -1051,7 +1051,7 @@ def mufredat(profil_id: int, hepsi: bool = False, db: Session = Depends(get_db))
     konular = _alan_konulari(db, profil)
     durumlar = _durum_map(db, profil.id)
     # Yönetici ?hepsi=1 ile kapsam dışı konuları da görür (düzenleme için)
-    tumunu_goster = hepsi and yetki.yonetici_mi()
+    tumunu_goster = hepsi and yetki.mufredat_yetkisi()
 
     gruplu: dict[str, dict] = {}
     for konu in sorted(konular, key=lambda k: (k.ders_kod, k.sira)):
@@ -1088,9 +1088,9 @@ def mufredat(profil_id: int, hepsi: bool = False, db: Session = Depends(get_db))
         )
 
     # Yöneticinin yeni açtığı dersin henüz konusu olmayabilir: kart yine de
-    # listelenir, böylece altındaki "Konu ekle"ye ulaşılabilir. Öğrenci/veli
+    # listelenir, böylece altındaki "Konu ekle"ye ulaşılabilir. Öğrenci
     # tarafında içi boş ders gizli kalır.
-    if yetki.yonetici_mi():
+    if yetki.mufredat_yetkisi():
         for kod, ders in ders_map.items():
             alanlar = [a.strip() for a in (ders.alanlar or "").split(",") if a.strip()]
             if "ortak" not in alanlar and profil.alan not in alanlar:
@@ -1186,8 +1186,8 @@ def _konu_sil(db: Session, konu: Konu) -> None:
 
 @api.post("/mufredat/konu")
 def mufredat_konu_ekle(veri: KonuGiris, db: Session = Depends(get_db)):
-    """Müfredata konu ekler (yalnız yönetici)."""
-    yetki.yonetici_kontrol()
+    """Müfredata konu ekler (yönetici ve veli)."""
+    yetki.mufredat_kontrol()
     if _ders_getir(db, veri.ders_kod) is None:
         raise HTTPException(400, "Ders bulunamadı")
     if veri.sinif not in GECERLI_KONU_SINIFLARI:
@@ -1216,8 +1216,8 @@ def mufredat_konu_ekle(veri: KonuGiris, db: Session = Depends(get_db)):
 
 @api.patch("/mufredat/konu/{konu_id}")
 def mufredat_konu_duzenle(konu_id: int, veri: KonuDuzenle, db: Session = Depends(get_db)):
-    """Konu alanlarını günceller (yalnız yönetici)."""
-    yetki.yonetici_kontrol()
+    """Konu alanlarını günceller (yönetici ve veli)."""
+    yetki.mufredat_kontrol()
     konu = db.get(Konu, konu_id)
     if konu is None:
         raise HTTPException(404, "Konu bulunamadı")
@@ -1251,7 +1251,7 @@ def mufredat_konu_duzenle(konu_id: int, veri: KonuDuzenle, db: Session = Depends
 @api.delete("/mufredat/konu/{konu_id}")
 def mufredat_konu_sil(konu_id: int, db: Session = Depends(get_db)):
     """Konuyu müfredattan kaldırır; öğrenci durum kayıtları da temizlenir."""
-    yetki.yonetici_kontrol()
+    yetki.mufredat_kontrol()
     konu = db.get(Konu, konu_id)
     if konu is None:
         raise HTTPException(404, "Konu bulunamadı")
@@ -1263,8 +1263,8 @@ def mufredat_konu_sil(konu_id: int, db: Session = Depends(get_db)):
 
 @api.post("/mufredat/ders")
 def mufredat_ders_ekle(veri: DersGiris, db: Session = Depends(get_db)):
-    """Müfredata ders ekler (yalnız yönetici)."""
-    yetki.yonetici_kontrol()
+    """Müfredata ders ekler (yönetici ve veli)."""
+    yetki.mufredat_kontrol()
     kod = veri.kod.strip().upper()
     if _ders_getir(db, kod) is not None:
         raise HTTPException(400, "Bu ders kodu zaten var")
@@ -1288,8 +1288,8 @@ def mufredat_ders_ekle(veri: DersGiris, db: Session = Depends(get_db)):
 
 @api.patch("/mufredat/ders/{ders_kod}")
 def mufredat_ders_duzenle(ders_kod: str, veri: DersDuzenle, db: Session = Depends(get_db)):
-    """Dersin adı, soru sayısı, rengi gibi alanları günceller (yalnız yönetici)."""
-    yetki.yonetici_kontrol()
+    """Dersin adı, soru sayısı, rengi gibi alanları günceller (yönetici ve veli)."""
+    yetki.mufredat_kontrol()
     ders = _ders_getir(db, ders_kod)
     if ders is None:
         raise HTTPException(404, "Ders bulunamadı")
@@ -1316,8 +1316,8 @@ def mufredat_ders_duzenle(ders_kod: str, veri: DersDuzenle, db: Session = Depend
 
 @api.delete("/mufredat/ders/{ders_kod}")
 def mufredat_ders_sil(ders_kod: str, db: Session = Depends(get_db)):
-    """Dersi ve altındaki tüm konuları kaldırır (yalnız yönetici)."""
-    yetki.yonetici_kontrol()
+    """Dersi ve altındaki tüm konuları kaldırır (yönetici ve veli)."""
+    yetki.mufredat_kontrol()
     ders = _ders_getir(db, ders_kod)
     if ders is None:
         raise HTTPException(404, "Ders bulunamadı")

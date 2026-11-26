@@ -5,9 +5,9 @@ yapay zekâ destekli YKS koçluk platformu. Öğrencinin alanı (Sayısal / Eşi
 Sözel), sınıf düzeyi (11, 12, mezun) ve hedefi doğrultusunda günlük çalışma planı
 üretir; deneme sonuçlarını analiz eder; yapay zekâ koçuyla kişisel rehberlik verir.
 
-> Sürüm 3.6.1 — canlıda çalışıyor: <https://a-key.onrender.com> (Render + Neon
+> Sürüm 3.6.2 — canlıda çalışıyor: <https://a-key.onrender.com> (Render + Neon
 > PostgreSQL). Müfredat haritası,
-> plan üretimi, deneme analizi, koç sohbeti, yönetici için müfredat düzenleme
+> plan üretimi, deneme analizi, koç sohbeti, yönetici ve veli için müfredat düzenleme
 > (ders/konu ekleme, düzenleme, silme),
 > kullanıcı yönetimi, kendi şifresini değiştirme, bulut yedekleme, **okul ders
 > programı + okulda işlenen konuların tekrarı** ve **yapay zekâ plan analizi
@@ -116,7 +116,7 @@ kayar. Hedef sıralama boş bırakılırsa 100.000 eşdeğeri kullanılır ve ar
 | Sayfa | Ne yapar |
 | --- | --- |
 | Panel | Günlük özet, **hedef sıralama ve gereken netler**, öncelikli konular, haftalık çalışma, ders bazlı ilerleme |
-| Müfredat | Ders → konu listesi; durum (başlanmadı / çalışılıyor / tamam / tekrar) ve 1-5 özgüven puanı; **yönetici ders ve konu ekleyip düzenleyip kaldırabilir** (elle yapılan değişiklikler açılıştaki gömülü müfredat güncellemesiyle ezilmez) |
+| Müfredat | Ders → konu listesi; durum (başlanmadı / çalışılıyor / tamam / tekrar) ve 1-5 özgüven puanı; **yönetici ve veli ders ve konu ekleyip düzenleyip kaldırabilir** (elle yapılan değişiklikler açılıştaki gömülü müfredat güncellemesiyle ezilmez) |
 | Plan | Günlük / haftalık / aylık program; **yapay zekâ plan analizi** (ders payları, odak konular, strateji), açık konu önceliği, **her gün matematik + paragraf**, aylık takvimde cumartesi deneme, pazar tekrar, **okulda işlenen konuların tekrar ve pekiştirme blokları** |
 | Ders Programı | **Yalnız 11. ve 12. sınıf** (mezun profilinde menüde görünmez): haftalık okul çizelgesi (5 gün × 8 ders saati, hazır şablon veya elle), **bugün okulda işlenen konuların girişi**, son günlerin konu geçmişi |
 | Denemeler | TYT ve AYT deneme girişi, canlı net hesabı, **hedefe kalan net**, tahmini puan, **konu bazlı açık analizi**, **yapay zekâ değerlendirmesi ve deneme takvimi** |
@@ -192,7 +192,7 @@ kurulur. Kapsam sınıf ve sınav düzeyine bağlıdır, her yerde aynı süzge�
 - **Mezun** → tüm TYT + AYT konuları
 
 Kapsam dışı konu plana, analiz tablosuna, müfredat listesine ve konu
-seçeneklerine girmez. Yönetici, müfredat sayfasındaki **Kapsam dışı: gizli**
+seçeneklerine girmez. Yönetici/veli, müfredat sayfasındaki **Kapsam dışı: gizli**
 düğmesiyle bu konuları görüp düzenleyebilir (`GET /api/mufredat/{id}?hepsi=1`).
 
 ### Yapay zekâ plan analizi (ders payı ve odak konular)

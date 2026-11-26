@@ -18,19 +18,19 @@ let veri = null;
 let uygulama = null;
 let sinavFiltre = "hepsi";
 let arama = "";
-let yonetici = false;
+let duzenleyebilir = false;
 // Açık olan düzenleme formu: { tip: "konu", dersKod, konu } | { tip: "ders", ders }
 let form = null;
 let ustBilgi = null;
-// Yönetici kapsam dışı konuları da görsün mü? (düzenleme/silme için)
+// Yönetici/veli kapsam dışı konuları da görsün mü? (düzenleme/silme için)
 let hepsi = false;
 let kapsamDugmesi = null;
 const acikDersler = new Set();
 
 export async function ciz(kap, durum) {
   uygulama = durum;
-  // Müfredat tüm profiller için ortak: düzenleme yetkisi yalnız yöneticide
-  yonetici = (durum.kullanici?.rol || "yonetici") === "yonetici";
+  // Müfredat tüm profiller için ortak: düzenleme yetkisi yönetici ve velide
+  duzenleyebilir = ["yonetici", "veli"].includes(durum.kullanici?.rol || "yonetici");
   hepsi = false;
   veri = await mufredatGetir();
   arama = "";
@@ -86,7 +86,7 @@ export async function ciz(kap, durum) {
           veri.kapsam ? rozet(`Kapsam: ${veri.kapsam.etiket}`, "marka") : null,
           filtreler,
           h("div", { style: { width: "200px" } }, aramaGirdi),
-          yonetici
+          duzenleyebilir
             ? h("div", { style: { display: "flex", gap: "6px", flexWrap: "wrap" } },
                 h("button", {
                   class: "dugme kucuk",
@@ -103,7 +103,7 @@ export async function ciz(kap, durum) {
                 (kapsamDugmesi = h("button", {
                   class: `dugme ${hepsi ? "" : "sessiz"} kucuk`,
                   type: "button",
-                  title: "Bu öğrencinin sınıfına girmeyen konuları da göster (yönetici görünümü)",
+                  title: "Bu öğrencinin sınıfına girmeyen konuları da göster (yönetici/veli görünümü)",
                   onclick: async () => {
                     hepsi = !hepsi;
                     veri = await mufredatGetir();
@@ -119,10 +119,10 @@ export async function ciz(kap, durum) {
         class: "ipucu",
         text: "İpucu: Yıldızlar konuya ne kadar güvendiğini gösterir (1 = zayıf, 5 = çok iyi). Plan motoru düşük yıldızlı konuları öne alır.",
       }),
-      yonetici
+      duzenleyebilir
         ? h("p", {
             class: "ipucu",
-            text: "Yönetici olarak ders ve konu ekleyebilir, düzenleyebilir ve kaldırabilirsin: üstteki “Konu ekle” / “Ders ekle” düğmeleri yeni kayıt açar, her dersin başındaki düğmeler o dersin işlemlerini gösterir, her konu satırındaki ✕ konuyu kaldırır. Öğrencinin sınıfına girmeyen konular varsayılan olarak gizlidir; eklemek/düzenlemek için “Kapsam dışı: gizli” düğmesiyle görünür yap. Elle eklediğin ya da düzenlediğin satırlar, program açılışındaki gömülü müfredat güncellemesiyle ezilmez ya da geri gelmez.",
+            text: "Yönetici/veli olarak ders ve konu ekleyebilir, düzenleyebilir ve kaldırabilirsin: üstteki “Konu ekle” / “Ders ekle” düğmeleri yeni kayıt açar, her dersin başındaki düğmeler o dersin işlemlerini gösterir, her konu satırındaki ✕ konuyu kaldırır. Öğrencinin sınıfına girmeyen konular varsayılan olarak gizlidir; eklemek/düzenlemek için “Kapsam dışı: gizli” düğmesiyle görünür yap. Elle eklediğin ya da düzenlediğin satırlar, program açılışındaki gömülü müfredat güncellemesiyle ezilmez ya da geri gelmez.",
           })
         : null
     ),
@@ -132,9 +132,9 @@ export async function ciz(kap, durum) {
   cizListe(listeKabi);
 }
 
-/** Müfredatı getirir; yönetici “kapsam dışı” görünümündeyse tümünü ister */
+/** Müfredatı getirir; düzenleyici “kapsam dışı” görünümündeyse tümünü ister */
 function mufredatGetir() {
-  const ek = yonetici && hepsi ? "?hepsi=1" : "";
+  const ek = duzenleyebilir && hepsi ? "?hepsi=1" : "";
   return api.get(`/api/mufredat/${uygulama.profil.id}${ek}`);
 }
 
@@ -165,8 +165,8 @@ function cizListe(kap = document.getElementById("konu-listesi")) {
   if (!kap) return;
   kap.replaceChildren();
 
-  if (yonetici && form?.tip === "ders") kap.append(dersFormu(form.ders));
-  if (yonetici && form?.tip === "konu" && !form.dersKod) kap.append(konuFormu(null, form.konu));
+  if (duzenleyebilir && form?.tip === "ders") kap.append(dersFormu(form.ders));
+  if (duzenleyebilir && form?.tip === "konu" && !form.dersKod) kap.append(konuFormu(null, form.konu));
 
   const dersler = veri.dersler.filter((d) => {
     if (sinavFiltre !== "hepsi" && d.sinav !== sinavFiltre) return false;
@@ -214,7 +214,7 @@ function cizListe(kap = document.getElementById("konu-listesi")) {
 
     const govde = h("div", { class: "konu-liste" });
     // Yönetici işlemleri listenin başında dursun: uzun derslerde görünür kalır
-    if (yonetici) govde.append(dersAltligi(ders));
+    if (duzenleyebilir) govde.append(dersAltligi(ders));
     if (!ders.konular.length) {
       govde.append(h("p", {
         class: "ipucu",
@@ -285,7 +285,7 @@ function konuSatiri(konu, ders) {
     h("div", { class: "durum-alan" }, yildizKabi)
   );
   if (konu.kapsam_disi) satir.classList.add("kapsam-disi");
-  if (yonetici) {
+  if (duzenleyebilir) {
     satir.classList.add("yonetici");
     satir.append(
       h(

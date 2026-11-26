@@ -5,7 +5,7 @@
 
 * ``yonetici`` — her ekranı açar, kullanıcı tanımlar.
 * ``veli`` — kullanıcı tanımlama dışında her şeyi yapar, yalnız kendi
-  öğrencilerinin verisini görür.
+  öğrencilerinin verisini görür. Müfredatı (ders/konu) da düzenleyebilir.
 * ``ogrenci`` — deneme girişi ve ayarlar dışındaki ekranları kullanır,
   yalnız kendi profilini görür.
 
@@ -93,6 +93,23 @@ def yonetici_mi(kullanici: Kullanici | None = None) -> bool:
 def yonetici_kontrol() -> None:
     if not yonetici_mi():
         raise HTTPException(403, "Bu işlemi yalnız yönetici yapabilir.")
+
+
+# Müfredat (ders/konu) düzenleme: yönetici ve veli
+MUFREDAT_ROLLERI = {"yonetici", "veli"}
+
+
+def mufredat_yetkisi(kullanici: Kullanici | None = None) -> bool:
+    """Müfredatta ders/konu ekleme-silme yetkisi var mı? Kapısız modda evet."""
+    kullanici = kullanici if kullanici is not None else mevcut_kullanici()
+    return kullanici is None or kullanici.rol in MUFREDAT_ROLLERI
+
+
+def mufredat_kontrol() -> None:
+    if not mufredat_yetkisi():
+        raise HTTPException(
+            403, "Bu işlemi yalnız yönetici ve veli yapabilir."
+        )
 
 
 # ------------------------------------------------------------- veri kapsamı
